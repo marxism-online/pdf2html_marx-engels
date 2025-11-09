@@ -1,0 +1,10 @@
+<a name="{{ anchor }}"> </a>
+{% if pm.work_title %}
+<h1 align="center" style="color: red;">{{ pm.work_title | safe }}</h1>
+{% endif %}
+{% if pm.author %}
+<p align="center">{{ pm.author | safe }}</p>
+{% endif %}
+{% for p in pm.blocks %}
+  <p align="{{ p.align }}">{{ p | render_inlines }}</p>
+{% endfor %}

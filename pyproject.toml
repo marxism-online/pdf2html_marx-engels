@@ -1,0 +1,15 @@
+[project]
+name = "pdf2html"
+version = "0.1.0"
+description = "Converter of books from PDF to HTML per custom formatting rules"
+requires-python = ">=3.10"
+dependencies = [
+  "pdfminer.six>=20231228",
+  "Pillow>=10.0.0",
+  "pytesseract>=0.3.10",
+  "Jinja2>=3.1.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,20 @@
+{{ nextpage }}<a name="{{ anchor }}"> </a>
+{% if pm.top_title %}
+  <p align="CENTER">{{ pm.top_title | safe }}</p>
+{% endif %}
+{% if pm.heading %}
+  <h{{ pm.heading.level }} align="CENTER">{{ pm.heading.text | safe }}</h{{ pm.heading.level }}>
+{% endif %}
+{% for p in pm.blocks %}
+  {% if p.is_quote %}
+    <blockquote><p align="JUSTIFY">{{ p | render_inlines }}</p></blockquote>
+  {% else %}
+    <p align="{{ p.align }}">{{ p | render_inlines }}</p>
+  {% endif %}
+{% endfor %}
+{% if pm.has_bottom_hr %}
+  <hr style="width:30%; text-align:left; margin-left:0;">
+  {% if pm.footnote_block %}
+    <p><small>{{ pm.footnote_block | render_inlines }}</small></p>
+  {% endif %}
+{% endif %}
