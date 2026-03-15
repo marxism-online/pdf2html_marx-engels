@@ -37,7 +37,7 @@ def main() -> None:
         else:
             parts.append(fmt.render_page(pm))
 
-    Path(args.out).write_text("\n".join(parts), encoding="utf-8")
+    Path(args.out).write_text("".join(parts), encoding="utf-8")
 
 
 if __name__ == "__main__":
