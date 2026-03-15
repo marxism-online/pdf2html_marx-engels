@@ -28,15 +28,22 @@ def detect_paragraphs(text_layer: PageTextLayer) -> list[Paragraph]:
             prev_line = line
             continue
 
-        vertical_gap = prev_line.y0 - line.y1
-        same_left_edge = abs(prev_line.x0 - line.x0) <= 3.0
+        prev_text = prev_line.text.strip()
 
-        new_paragraph = False
+        # Если предыдущая строка заканчивается дефисом переноса,
+        # следующая строка почти наверняка продолжает тот же абзац.
+        if _ends_with_hyphen_wrap(prev_text):
+            new_paragraph = False
+        else:
+            vertical_gap = prev_line.y0 - line.y1
+            same_left_edge = abs(prev_line.x0 - line.x0) <= 6.0
 
-        if vertical_gap > max(prev_line.height, line.height) * 0.9:
-            new_paragraph = True
-        elif not same_left_edge:
-            new_paragraph = True
+            new_paragraph = False
+
+            if vertical_gap > max(prev_line.height, line.height) * 0.9:
+                new_paragraph = True
+            elif not same_left_edge:
+                new_paragraph = True
 
         if new_paragraph:
             para = _build_paragraph(current_lines)
@@ -93,4 +100,11 @@ def _should_concatenate_without_space(left: str, right: str) -> bool:
     if not left or not right:
         return False
 
-    return left.endswith("-")
+    return _ends_with_hyphen_wrap(left)
+
+
+def _ends_with_hyphen_wrap(text: str) -> bool:
+    if not text:
+        return False
+
+    return text.endswith("-")
