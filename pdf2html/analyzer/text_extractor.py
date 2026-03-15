@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from pdfminer.layout import LTChar
+from pdfminer.layout import LTTextContainer
+from pdfminer.layout import LTTextLine
+
+from pdf2html.utils.text_layer import PageTextLayer
+from pdf2html.utils.text_layer import TextBlock
+from pdf2html.utils.text_layer import TextLine
+from pdf2html.utils.text_layer import TextSpan
+
+
+class PdfTextExtractor:
+    def extract_page_text_layer(self, page_no: int, layout: object) -> PageTextLayer:
+        width = float(getattr(layout, "width", 0.0))
+        height = float(getattr(layout, "height", 0.0))
+
+        blocks: list[TextBlock] = []
+
+        for obj in layout:
+            if not isinstance(obj, LTTextContainer):
+                continue
+
+            block = self._extract_block(obj)
+            if block.lines:
+                blocks.append(block)
+
+        blocks.sort(key=lambda b: (-b.y1, b.x0))
+
+        return PageTextLayer(
+            page_no=page_no,
+            width=width,
+            height=height,
+            blocks=blocks,
+        )
+
+    def _extract_block(self, obj: LTTextContainer) -> TextBlock:
+        lines: list[TextLine] = []
+
+        for child in obj:
+            if not isinstance(child, LTTextLine):
+                continue
+
+            line = self._extract_line(child)
+            if line.text:
+                lines.append(line)
+
+        if not lines:
+            return TextBlock()
+
+        x0 = min(line.x0 for line in lines)
+        y0 = min(line.y0 for line in lines)
+        x1 = max(line.x1 for line in lines)
+        y1 = max(line.y1 for line in lines)
+
+        return TextBlock(
+            lines=lines,
+            x0=x0,
+            y0=y0,
+            x1=x1,
+            y1=y1,
+        )
+
+    def _extract_line(self, line_obj: LTTextLine) -> TextLine:
+        spans: list[TextSpan] = []
+
+        current_text: list[str] = []
+        current_chars: list[LTChar] = []
+        current_fontname: str | None = None
+        current_fontsize: float | None = None
+
+        def flush_span() -> None:
+            nonlocal current_text, current_chars, current_fontname, current_fontsize
+
+            if not current_text or not current_chars:
+                current_text = []
+                current_chars = []
+                current_fontname = None
+                current_fontsize = None
+                return
+
+            spans.append(
+                TextSpan(
+                    text="".join(current_text),
+                    x0=min(ch.x0 for ch in current_chars),
+                    y0=min(ch.y0 for ch in current_chars),
+                    x1=max(ch.x1 for ch in current_chars),
+                    y1=max(ch.y1 for ch in current_chars),
+                    fontname=current_fontname,
+                    fontsize=current_fontsize,
+                )
+            )
+
+            current_text = []
+            current_chars = []
+            current_fontname = None
+            current_fontsize = None
+
+        for elem in line_obj:
+            if isinstance(elem, LTChar):
+                fontname = getattr(elem, "fontname", None)
+                fontsize = float(getattr(elem, "size", 0.0))
+
+                if (
+                    current_fontname is not None
+                    and current_fontsize is not None
+                    and (fontname != current_fontname or fontsize != current_fontsize)
+                ):
+                    flush_span()
+
+                current_text.append(elem.get_text())
+                current_chars.append(elem)
+
+                if current_fontname is None:
+                    current_fontname = fontname
+                if current_fontsize is None:
+                    current_fontsize = fontsize
+            else:
+                text = elem.get_text()
+                if text:
+                    current_text.append(text)
+
+        flush_span()
+
+        text_value = "".join(span.text for span in spans).strip()
+        if not text_value:
+            return TextLine()
+
+        return TextLine(
+            spans=spans,
+            x0=float(getattr(line_obj, "x0", 0.0)),
+            y0=float(getattr(line_obj, "y0", 0.0)),
+            x1=float(getattr(line_obj, "x1", 0.0)),
+            y1=float(getattr(line_obj, "y1", 0.0)),
+        )
