@@ -6,5 +6,5 @@
 <p align="center">{{ pm.author | safe }}</p>
 {% endif %}
 {% for p in pm.blocks %}
-  <p align="{{ p.align }}">{{ p | render_inlines }}</p>
+<p align="{{ p.align }}">{{ p | render_inlines }}</p>
 {% endfor %}
