@@ -1,0 +1,3 @@
+alex@HPeliteBook:~/pdf2html_project$ source .venv/bin/activate
+(.venv) alex@HPeliteBook:~/pdf2html_project$ python -m pdf2html.cli test.pdf --out out.html
+
