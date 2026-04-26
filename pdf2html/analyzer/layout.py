@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pdf2html.analyzer.heuristics import detect_footnote
 from pdf2html.analyzer.heuristics import detect_headings
 from pdf2html.analyzer.heuristics import detect_paragraphs
 from pdf2html.analyzer.heuristics import detect_quotes
@@ -17,8 +18,12 @@ class StructureAnalyzer:
 
         header = detect_running_header(text_layer)
         top_title, book_page_num = header if header else (None, None)
+
+        footnote_result = detect_footnote(text_layer)
+        footnote_block, body_min_y = footnote_result if footnote_result else (None, None)
+
         heading = detect_headings(text_layer)
-        blocks = detect_paragraphs(text_layer)
+        blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
 
         if top_title and blocks:
             blocks = blocks[1:]
@@ -29,8 +34,8 @@ class StructureAnalyzer:
             top_title=top_title,
             heading=heading,
             blocks=blocks,
-            footnote_block=None,
-            has_bottom_hr=False,
+            footnote_block=footnote_block,
+            has_bottom_hr=footnote_block is not None,
         )
 
         detect_quotes(pm)

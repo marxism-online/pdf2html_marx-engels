@@ -33,7 +33,42 @@ def detect_headings(text_layer: PageTextLayer) -> Heading | None:
     return None
 
 
-def detect_paragraphs(text_layer: PageTextLayer) -> list[Paragraph]:
+def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float] | None:
+    lines = [line for line in text_layer.lines if line.text.strip()]
+    if not lines:
+        return None
+
+    all_sizes = [l.avg_fontsize for l in lines if l.avg_fontsize is not None]
+    if not all_sizes:
+        return None
+
+    all_sizes.sort()
+    main_size = all_sizes[len(all_sizes) // 2]
+    small_threshold = main_size * 0.85
+
+    sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
+
+    footnote_lines = []
+    for line in sorted_asc:
+        fs = line.avg_fontsize
+        if fs is not None and fs <= small_threshold:
+            footnote_lines.append(line)
+        else:
+            break
+
+    if not footnote_lines:
+        return None
+
+    footnote_lines.sort(key=lambda l: -l.y0)  # reading order
+    texts = [l.text.strip() for l in footnote_lines if l.text.strip()]
+    text = _join_lines(texts).strip()
+    para = Paragraph(inlines=[Inline(text=text)], align="LEFT")
+
+    top_y = max(l.y1 for l in footnote_lines)
+    return para, top_y
+
+
+def detect_paragraphs(text_layer: PageTextLayer, body_min_y: float | None = None) -> list[Paragraph]:
     paragraphs: list[Paragraph] = []
 
     current_lines: list[str] = []
@@ -42,6 +77,8 @@ def detect_paragraphs(text_layer: PageTextLayer) -> list[Paragraph]:
     for line in text_layer.lines:
         text = line.text.strip()
         if not text:
+            continue
+        if body_min_y is not None and line.y0 < body_min_y:
             continue
 
         if prev_line is None:
