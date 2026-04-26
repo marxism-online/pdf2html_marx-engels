@@ -20,7 +20,7 @@ class StructureAnalyzer:
         top_title, book_page_num = header if header else (None, None)
 
         footnote_result = detect_footnote(text_layer)
-        footnote_block, body_min_y = footnote_result if footnote_result else (None, None)
+        footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
 
         heading = detect_headings(text_layer)
         blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
@@ -35,7 +35,7 @@ class StructureAnalyzer:
             heading=heading,
             blocks=blocks,
             footnote_block=footnote_block,
-            has_bottom_hr=footnote_block is not None,
+            has_bottom_hr=has_bottom_hr,
         )
 
         detect_quotes(pm)

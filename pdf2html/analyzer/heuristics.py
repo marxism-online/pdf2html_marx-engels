@@ -34,7 +34,11 @@ def detect_headings(text_layer: PageTextLayer) -> Heading | None:
     return None
 
 
-def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float] | None:
+def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float, bool] | None:
+    """Returns (paragraph, body_min_y, is_footnote).
+    is_footnote=True when text starts with *, meaning a real footnote with HR.
+    is_footnote=False for closing signatures (no HR).
+    """
     lines = [line for line in text_layer.lines if line.text.strip()]
     if not lines:
         return None
@@ -65,7 +69,8 @@ def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float] | None
     para = Paragraph(inlines=inlines, align="LEFT")
 
     top_y = max(l.y1 for l in footnote_lines)
-    return para, top_y
+    is_footnote = footnote_lines[0].text.strip().startswith("*")
+    return para, top_y, is_footnote
 
 
 def detect_paragraphs(text_layer: PageTextLayer, body_min_y: float | None = None) -> list[Paragraph]:
