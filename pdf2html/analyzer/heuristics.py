@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+import re
+
 from pdf2html.utils.text_layer import PageTextLayer
 from pdf2html.utils.types import Heading
 from pdf2html.utils.types import Inline
 from pdf2html.utils.types import PageModel
 from pdf2html.utils.types import Paragraph
+
+# Паттерн: текст, 5+ пробелов, затем число (арабское или римское)
+_RUNNING_HEADER_RE = re.compile(
+    r'^(.+?)\s{5,}(\d+|[IVXLCDM]{1,8})\s*$'
+)
+
+
+def detect_running_header(text_layer: PageTextLayer) -> str | None:
+    lines = [line for line in text_layer.lines if line.text.strip()]
+    if not lines:
+        return None
+    m = _RUNNING_HEADER_RE.match(lines[0].text)
+    if not m:
+        return None
+    text_part = m.group(1).strip()
+    num_part = m.group(2)
+    return f"{num_part} <br>{text_part}"
 
 
 def detect_headings(text_layer: PageTextLayer) -> Heading | None:
