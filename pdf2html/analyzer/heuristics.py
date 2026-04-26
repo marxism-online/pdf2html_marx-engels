@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from pdf2html.utils.text_layer import PageTextLayer
+from pdf2html.utils.text_layer import TextLine
 from pdf2html.utils.types import Heading
 from pdf2html.utils.types import Inline
 from pdf2html.utils.types import PageModel
@@ -60,9 +61,8 @@ def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float] | None
         return None
 
     footnote_lines.sort(key=lambda l: -l.y0)  # reading order
-    texts = [l.text.strip() for l in footnote_lines if l.text.strip()]
-    text = _join_lines(texts).strip()
-    para = Paragraph(inlines=[Inline(text=text)], align="LEFT")
+    inlines = _lines_to_inlines(footnote_lines)
+    para = Paragraph(inlines=inlines, align="LEFT")
 
     top_y = max(l.y1 for l in footnote_lines)
     return para, top_y
@@ -166,3 +166,43 @@ def _ends_with_hyphen_wrap(text: str) -> bool:
         return False
 
     return text.endswith("-")
+
+
+def _is_italic_font(fontname: str | None) -> bool:
+    if not fontname:
+        return False
+    fn = fontname.lower()
+    return "italic" in fn or "oblique" in fn
+
+
+def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
+    """Build Inline list from TextLines preserving italic per span, handling hyphen-wrap."""
+    inlines: list[Inline] = []
+
+    for line in lines:
+        line_parts: list[Inline] = []
+        for span in line.spans:
+            text = span.text.replace("\n", "").replace("\r", "")
+            if not text:
+                continue
+            line_parts.append(Inline(text=text, italic=_is_italic_font(span.fontname)))
+
+        if not line_parts:
+            continue
+
+        if inlines and _ends_with_hyphen_wrap(inlines[-1].text.rstrip()):
+            inlines[-1].text = inlines[-1].text.rstrip()[:-1]
+        elif inlines:
+            line_parts[0].text = " " + line_parts[0].text
+
+        inlines.extend(line_parts)
+
+    # Merge adjacent inlines with same style
+    merged: list[Inline] = []
+    for inline in inlines:
+        if merged and merged[-1].italic == inline.italic and merged[-1].bold == inline.bold:
+            merged[-1].text += inline.text
+        else:
+            merged.append(Inline(text=inline.text, italic=inline.italic, bold=inline.bold))
+
+    return merged
