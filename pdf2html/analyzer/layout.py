@@ -15,7 +15,8 @@ class StructureAnalyzer:
     def build_page_model(self, page_no: int, layout: object) -> PageModel:
         text_layer = self.text_extractor.extract_page_text_layer(page_no, layout)
 
-        top_title = detect_running_header(text_layer)
+        header = detect_running_header(text_layer)
+        top_title, book_page_num = header if header else (None, None)
         heading = detect_headings(text_layer)
         blocks = detect_paragraphs(text_layer)
 
@@ -24,6 +25,7 @@ class StructureAnalyzer:
 
         pm = PageModel(
             page_num=page_no,
+            book_page_num=book_page_num,
             top_title=top_title,
             heading=heading,
             blocks=blocks,

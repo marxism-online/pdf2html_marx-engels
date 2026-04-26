@@ -14,7 +14,7 @@ _RUNNING_HEADER_RE = re.compile(
 )
 
 
-def detect_running_header(text_layer: PageTextLayer) -> str | None:
+def detect_running_header(text_layer: PageTextLayer) -> tuple[str, int] | None:
     lines = [line for line in text_layer.lines if line.text.strip()]
     if not lines:
         return None
@@ -23,7 +23,9 @@ def detect_running_header(text_layer: PageTextLayer) -> str | None:
         return None
     text_part = m.group(1).strip()
     num_part = m.group(2)
-    return f"{num_part} <br>{text_part}"
+    if not num_part.isdigit():
+        return None
+    return f"{num_part} <br>{text_part}", int(num_part)
 
 
 def detect_headings(text_layer: PageTextLayer) -> Heading | None:
