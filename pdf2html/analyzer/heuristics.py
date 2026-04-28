@@ -144,10 +144,19 @@ def detect_paragraphs(
     body_min_y: float | None = None,
     heading_body_threshold: float | None = None,
 ) -> list[Paragraph]:
-    paragraphs: list[Paragraph] = []
+    # Compute median font size of body lines to detect small paragraphs
+    body_sizes: list[float] = []
+    for line in text_layer.lines:
+        if body_min_y is not None and line.y0 < body_min_y:
+            continue
+        if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
+            continue
+        body_sizes.extend(s.fontsize for s in line.spans if s.fontsize)
+    body_median = sorted(body_sizes)[len(body_sizes) // 2] if body_sizes else None
 
-    current_lines: list[str] = []
-    prev_line = None
+    paragraphs: list[Paragraph] = []
+    current_lines: list[TextLine] = []
+    prev_line: TextLine | None = None
 
     for line in text_layer.lines:
         text = line.text.strip()
@@ -159,7 +168,7 @@ def detect_paragraphs(
             continue
 
         if prev_line is None:
-            current_lines.append(text)
+            current_lines.append(line)
             prev_line = line
             continue
 
@@ -181,17 +190,17 @@ def detect_paragraphs(
                 new_paragraph = True
 
         if new_paragraph:
-            para = _build_paragraph(current_lines)
+            para = _build_paragraph(current_lines, text_layer.width, body_median)
             if para is not None:
                 paragraphs.append(para)
-            current_lines = [text]
+            current_lines = [line]
         else:
-            current_lines.append(text)
+            current_lines.append(line)
 
         prev_line = line
 
     if current_lines:
-        para = _build_paragraph(current_lines)
+        para = _build_paragraph(current_lines, text_layer.width, body_median)
         if para is not None:
             paragraphs.append(para)
 
@@ -203,15 +212,30 @@ def detect_quotes(pm: PageModel) -> PageModel:
     return pm
 
 
-def _build_paragraph(lines: list[str]) -> Paragraph | None:
-    text = _join_lines(lines).strip()
-    if not text:
+def _build_paragraph(
+    lines: list[TextLine],
+    page_width: float = 0.0,
+    body_fontsize: float | None = None,
+) -> Paragraph | None:
+    inlines = _lines_to_inlines(lines)
+    if not inlines or not any(i.text.strip() for i in inlines):
         return None
 
-    return Paragraph(
-        inlines=[Inline(text=text)],
-        align="JUSTIFY",
-    )
+    # Detect small font: paragraph median < 85% of body median
+    is_small = False
+    if body_fontsize is not None:
+        sizes = [s.fontsize for l in lines for s in l.spans if s.fontsize]
+        if sizes:
+            para_median = sorted(sizes)[len(sizes) // 2]
+            is_small = para_median < body_fontsize * 0.85
+
+    # Detect right alignment: left margin significantly larger than right margin
+    para_x0 = min(l.x0 for l in lines)
+    para_x1 = max(l.x1 for l in lines)
+    right_margin = page_width - para_x1
+    align: str = "RIGHT" if para_x0 > right_margin * 3 and para_x0 > 50 else "JUSTIFY"
+
+    return Paragraph(inlines=inlines, align=align, is_small=is_small)
 
 
 def _join_lines(lines: list[str]) -> str:

@@ -11,6 +11,8 @@
 <blockquote>
 <p align="JUSTIFY">{{ p | render_inlines }}</p>
 </blockquote>
+{% elif p.is_small %}
+<p align="{{ p.align }}"><small>{{ p | render_inlines }}</small></p>
 {% else %}
 <p align="{{ p.align }}">{{ p | render_inlines }}</p>
 {% endif %}

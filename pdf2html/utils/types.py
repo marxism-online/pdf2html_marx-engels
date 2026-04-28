@@ -17,6 +17,7 @@ class Paragraph:
     align: Align = "JUSTIFY"
     is_quote: bool = False
     is_q_inline: bool = False
+    is_small: bool = False
 
 @dataclass
 class Heading:
