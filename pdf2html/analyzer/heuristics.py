@@ -186,7 +186,7 @@ def detect_paragraphs(
 
             if vertical_gap > max(prev_line.height, line.height) * 0.9:
                 new_paragraph = True
-            elif not same_left_edge:
+            elif line.x0 - prev_line.x0 > 6.0:
                 new_paragraph = True
 
         if new_paragraph:
