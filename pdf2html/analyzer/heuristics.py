@@ -131,7 +131,7 @@ def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float, bool] 
         return None
 
     footnote_lines.sort(key=lambda l: -l.y0)  # reading order
-    inlines = _lines_to_inlines(footnote_lines)
+    inlines = _lines_to_inlines(footnote_lines, break_on_asterisk=True)
     para = Paragraph(inlines=inlines, align="LEFT")
 
     top_y = max(l.y1 for l in footnote_lines)
@@ -276,7 +276,7 @@ def _is_italic_font(fontname: str | None) -> bool:
     return "italic" in fn or "oblique" in fn
 
 
-def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
+def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) -> list[Inline]:
     """Build Inline list from TextLines preserving italic per span, handling hyphen-wrap."""
     inlines: list[Inline] = []
 
@@ -294,7 +294,11 @@ def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
         if inlines and _ends_with_hyphen_wrap(inlines[-1].text.rstrip()):
             inlines[-1].text = inlines[-1].text.rstrip()[:-1]
         elif inlines:
-            line_parts[0].text = " " + line_parts[0].text
+            first_text = "".join(lp.text for lp in line_parts).lstrip()
+            if break_on_asterisk and first_text.startswith("*"):
+                line_parts[0].text = "<br>" + line_parts[0].text.lstrip()
+            else:
+                line_parts[0].text = " " + line_parts[0].text
 
         inlines.extend(line_parts)
 
