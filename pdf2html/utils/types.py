@@ -23,6 +23,7 @@ class Heading:
     level: Literal[2, 3]
     text: str
     align: Align = "CENTER"
+    bold: bool = False
 
 @dataclass
 class PageModel:
@@ -31,7 +32,7 @@ class PageModel:
     top_title: Optional[str] = None
     author: Optional[str] = None
     work_title: Optional[str] = None
-    heading: Optional[Heading] = None
+    headings: List[Heading] = field(default_factory=list)
     blocks: List[Paragraph] = field(default_factory=list)
     footnote_block: Optional[Paragraph] = None
     has_bottom_hr: bool = False

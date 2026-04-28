@@ -22,17 +22,23 @@ class StructureAnalyzer:
         footnote_result = detect_footnote(text_layer)
         footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
 
-        heading = detect_headings(text_layer)
-        blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
-
-        if top_title and blocks:
-            blocks = blocks[1:]
+        headings, heading_body_threshold = detect_headings(text_layer)
+        if headings:
+            blocks = detect_paragraphs(
+                text_layer,
+                body_min_y=body_min_y,
+                heading_body_threshold=heading_body_threshold,
+            )
+        else:
+            blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
+            if top_title and blocks:
+                blocks = blocks[1:]
 
         pm = PageModel(
             page_num=page_no,
             book_page_num=book_page_num,
             top_title=top_title,
-            heading=heading,
+            headings=headings,
             blocks=blocks,
             footnote_block=footnote_block,
             has_bottom_hr=has_bottom_hr,

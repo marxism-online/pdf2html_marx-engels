@@ -8,7 +8,7 @@ def test_first_page_anchor_only():
   assert '<!--nextpage-->' not in html
 
 def test_regular_page_has_nextpage():
-  pm = PageModel(page_num=5, heading=Heading(level=2, text="ЧТО ДЕЛАТЬ?"))
+  pm = PageModel(page_num=5, headings=[Heading(level=2, text="ЧТО ДЕЛАТЬ?")])
   html = HtmlFormatter().render_page(pm)
   assert '<!--nextpage-->' in html
   assert '<a name="s5">' in html

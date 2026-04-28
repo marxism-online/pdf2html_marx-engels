@@ -29,9 +29,75 @@ def detect_running_header(text_layer: PageTextLayer) -> tuple[str, int] | None:
     return f"{num_part} <br>{text_part}", int(num_part)
 
 
-def detect_headings(text_layer: PageTextLayer) -> Heading | None:
-    # Пока заголовки не определяем.
-    return None
+_CENTERING_TOLERANCE = 30.0  # pts
+
+
+def _is_bold_font(fontname: str | None) -> bool:
+    if not fontname:
+        return False
+    return "bold" in fontname.lower()
+
+
+def _line_is_bold(line: TextLine) -> bool:
+    return any(_is_bold_font(s.fontname) for s in line.spans)
+
+
+def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None]:
+    """Return (headings, heading_body_threshold).
+
+    heading_body_threshold is the minimum y0 of detected heading lines.
+    detect_paragraphs should skip lines with y0 >= this value.
+    """
+    lines = sorted(
+        [l for l in text_layer.lines if l.text.strip()],
+        key=lambda l: -l.y0,
+    )
+    if not lines:
+        return [], None
+
+    page_center = text_layer.width / 2
+
+    # Skip running header (first line if it matches the header pattern)
+    start = 1 if _RUNNING_HEADER_RE.match(lines[0].text) else 0
+
+    heading_lines: list[TextLine] = []
+    for line in lines[start:]:
+        text = line.text.strip()
+        if not any(c.isalpha() for c in text):
+            continue
+        if text.upper() != text:
+            break
+        line_center = (line.x0 + line.x1) / 2
+        if abs(line_center - page_center) <= _CENTERING_TOLERANCE:
+            heading_lines.append(line)
+        else:
+            break
+
+    if not heading_lines:
+        return [], None
+
+    # Group consecutive lines by bold/non-bold font
+    groups: list[tuple[bool, list[TextLine]]] = []
+    for line in heading_lines:
+        bold = _line_is_bold(line)
+        if groups and groups[-1][0] == bold:
+            groups[-1][1].append(line)
+        else:
+            groups.append((bold, [line]))
+
+    rendered: list[str] = []
+    for is_bold, group_lines in groups:
+        parts = [l.text.strip() for l in group_lines]
+        text = "<br>".join(parts)
+        if is_bold:
+            text = f"<b>{text}</b>"
+        rendered.append(text)
+
+    combined = "<br><br>".join(rendered)
+    headings = [Heading(level=2, text=combined, align="CENTER")]
+
+    heading_body_threshold = min(l.y0 for l in heading_lines)
+    return headings, heading_body_threshold
 
 
 def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float, bool] | None:
@@ -73,7 +139,11 @@ def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float, bool] 
     return para, top_y, is_footnote
 
 
-def detect_paragraphs(text_layer: PageTextLayer, body_min_y: float | None = None) -> list[Paragraph]:
+def detect_paragraphs(
+    text_layer: PageTextLayer,
+    body_min_y: float | None = None,
+    heading_body_threshold: float | None = None,
+) -> list[Paragraph]:
     paragraphs: list[Paragraph] = []
 
     current_lines: list[str] = []
@@ -84,6 +154,8 @@ def detect_paragraphs(text_layer: PageTextLayer, body_min_y: float | None = None
         if not text:
             continue
         if body_min_y is not None and line.y0 < body_min_y:
+            continue
+        if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
             continue
 
         if prev_line is None:
