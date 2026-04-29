@@ -8,6 +8,7 @@ from pdf2html.utils.types import Heading
 from pdf2html.utils.types import Inline
 from pdf2html.utils.types import PageModel
 from pdf2html.utils.types import Paragraph
+from pdf2html.utils.types import SignatureBlock
 
 # Паттерн: текст, 5+ пробелов, затем число (арабское или римское)
 _RUNNING_HEADER_RE = re.compile(
@@ -100,12 +101,106 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     return headings, heading_body_threshold
 
 
-def detect_footnote(text_layer: PageTextLayer) -> tuple[Paragraph, float, bool] | None:
+def detect_signatures(text_layer: PageTextLayer) -> tuple[SignatureBlock, float] | None:
+    """Detect two-column article signatures at bottom of page.
+
+    Returns (SignatureBlock, sig_top_y) or None.
+    sig_top_y is the y1 of the topmost signature line, used to limit footnote detection.
+    """
+    lines = [line for line in text_layer.lines if line.text.strip()]
+    if not lines:
+        return None
+
+    all_sizes = [l.avg_fontsize for l in lines if l.avg_fontsize is not None]
+    if not all_sizes:
+        return None
+    all_sizes.sort()
+    main_size = all_sizes[len(all_sizes) // 2]
+    small_threshold = main_size * 0.85
+
+    sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
+    small_lines: list[TextLine] = []
+    for line in sorted_asc:
+        fs = line.avg_fontsize
+        if fs is not None and fs <= small_threshold:
+            small_lines.append(line)
+        else:
+            break
+
+    if not small_lines:
+        return None
+
+    small_lines.sort(key=lambda l: -l.y0)  # reading order
+    if small_lines[0].text.strip().startswith("*"):
+        return None  # real footnote, not signatures
+
+    page_center = text_layer.width / 2
+    left_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 < page_center]
+    right_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 >= page_center]
+
+    if not left_lines or not right_lines:
+        return None
+
+    sig_top_y = max(l.y1 for l in small_lines)
+    return SignatureBlock(
+        left=_group_sig_lines(left_lines),
+        right=_group_sig_lines(right_lines),
+    ), sig_top_y
+
+
+def _group_sig_lines(lines: list[TextLine]) -> list[Paragraph]:
+    """Group lines into paragraphs by vertical gap; use <br> within each paragraph."""
+    lines = sorted(lines, key=lambda l: -l.y0)
+    groups: list[list[TextLine]] = [[lines[0]]]
+    for line in lines[1:]:
+        prev = groups[-1][-1]
+        gap = prev.y0 - line.y1
+        if gap > prev.height * 1.5:
+            groups.append([line])
+        else:
+            groups[-1].append(line)
+
+    result: list[Paragraph] = []
+    for group in groups:
+        inlines = _lines_to_inlines_br(group)
+        result.append(Paragraph(inlines=inlines, align="LEFT", is_small=True))
+    return result
+
+
+def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
+    """Like _lines_to_inlines but inserts <br> between lines."""
+    inlines: list[Inline] = []
+    for line in lines:
+        parts: list[Inline] = []
+        for span in line.spans:
+            text = span.text.replace("\n", "").replace("\r", "")
+            if not text:
+                continue
+            parts.append(Inline(text=text, italic=_is_italic_font(span.fontname)))
+        if not parts:
+            continue
+        if inlines:
+            parts[0].text = "<br>" + parts[0].text.lstrip()
+        inlines.extend(parts)
+
+    merged: list[Inline] = []
+    for inline in inlines:
+        if merged and merged[-1].italic == inline.italic and merged[-1].bold == inline.bold:
+            merged[-1].text += inline.text
+        else:
+            merged.append(Inline(text=inline.text, italic=inline.italic, bold=inline.bold))
+    return merged
+
+
+def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -> tuple[Paragraph, float, bool] | None:
     """Returns (paragraph, body_min_y, is_footnote).
     is_footnote=True when text starts with *, meaning a real footnote with HR.
     is_footnote=False for closing signatures (no HR).
+    sig_top_y: if provided, ignore lines with y0 < sig_top_y (they belong to signatures).
     """
     lines = [line for line in text_layer.lines if line.text.strip()]
+    if sig_top_y is not None:
+        lines = [l for l in lines if l.y0 >= sig_top_y]
     if not lines:
         return None
 

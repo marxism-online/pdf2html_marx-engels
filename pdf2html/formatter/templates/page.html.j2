@@ -23,3 +23,17 @@
 {% if pm.footnote_block %}
 <p align="JUSTIFY"><small>{{ pm.footnote_block | render_inlines }}</small></p>
 {% endif %}
+{% if pm.signature_block %}
+<div style="display:flex; flex-wrap:wrap; gap:0.5em; margin-top:1em;">
+<div style="flex:1; min-width:200px;">
+{% for p in pm.signature_block.left %}
+<p><small>{{ p | render_inlines }}</small></p>
+{% endfor %}
+</div>
+<div style="flex:1; min-width:200px;">
+{% for p in pm.signature_block.right %}
+<p><small>{{ p | render_inlines }}</small></p>
+{% endfor %}
+</div>
+</div>
+{% endif %}

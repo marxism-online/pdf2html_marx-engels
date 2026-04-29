@@ -5,6 +5,7 @@ from pdf2html.analyzer.heuristics import detect_headings
 from pdf2html.analyzer.heuristics import detect_paragraphs
 from pdf2html.analyzer.heuristics import detect_quotes
 from pdf2html.analyzer.heuristics import detect_running_header
+from pdf2html.analyzer.heuristics import detect_signatures
 from pdf2html.analyzer.text_extractor import PdfTextExtractor
 from pdf2html.utils.types import PageModel
 
@@ -19,8 +20,14 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         top_title, book_page_num = header if header else (None, None)
 
-        footnote_result = detect_footnote(text_layer)
+        sig_result = detect_signatures(text_layer)
+        signature_block, sig_top_y = sig_result if sig_result else (None, None)
+
+        footnote_result = detect_footnote(text_layer, sig_top_y=sig_top_y)
         footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
+
+        if body_min_y is None and sig_top_y is not None:
+            body_min_y = sig_top_y
 
         headings, heading_body_threshold = detect_headings(text_layer)
         if headings:
@@ -42,6 +49,7 @@ class StructureAnalyzer:
             blocks=blocks,
             footnote_block=footnote_block,
             has_bottom_hr=has_bottom_hr,
+            signature_block=signature_block,
         )
 
         detect_quotes(pm)

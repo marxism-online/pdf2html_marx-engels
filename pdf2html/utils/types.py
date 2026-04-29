@@ -27,6 +27,11 @@ class Heading:
     bold: bool = False
 
 @dataclass
+class SignatureBlock:
+    left: List[Paragraph]
+    right: List[Paragraph]
+
+@dataclass
 class PageModel:
     page_num: int
     book_page_num: Optional[int] = None
@@ -37,3 +42,4 @@ class PageModel:
     blocks: List[Paragraph] = field(default_factory=list)
     footnote_block: Optional[Paragraph] = None
     has_bottom_hr: bool = False
+    signature_block: Optional[SignatureBlock] = None
