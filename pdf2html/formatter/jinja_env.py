@@ -20,6 +20,10 @@ def _render_inlines(p) -> str:
             t = f"<b>{t}</b>"
         if inline.small:
             t = f"<small>{t}</small>"
+        if inline.sup:
+            t = f"<sup>{t}</sup>"
+        if inline.sub:
+            t = f"<sub>{t}</sub>"
         parts.append(t)
 
     return "".join(parts)

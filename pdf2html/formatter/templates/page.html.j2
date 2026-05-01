@@ -17,23 +17,18 @@
 <p align="{{ p.align }}">{{ p | render_inlines }}</p>
 {% endif %}
 {% endfor %}
+{% if pm.signature_block %}
+<table width="96%">
+<tbody><tr>
+<td align="CENTER" width="45%"><small>{% for p in pm.signature_block.left %}{{ p | render_inlines }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</small></td>
+<td> </td>
+<td align="CENTER" valign="TOP" width="45%"><small>{% for p in pm.signature_block.right %}{{ p | render_inlines }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</small></td>
+</tr></tbody>
+</table>
+{% endif %}
 {% if pm.has_bottom_hr %}
 <hr style="width:25%; text-align:left; margin-left:0;">
 {% endif %}
 {% if pm.footnote_block %}
 <p align="JUSTIFY"><small>{{ pm.footnote_block | render_inlines }}</small></p>
-{% endif %}
-{% if pm.signature_block %}
-<div style="display:flex; flex-wrap:wrap; gap:0.5em; margin-top:1em;">
-<div style="flex:1; min-width:200px;">
-{% for p in pm.signature_block.left %}
-<p><small>{{ p | render_inlines }}</small></p>
-{% endfor %}
-</div>
-<div style="flex:1; min-width:200px;">
-{% for p in pm.signature_block.right %}
-<p><small>{{ p | render_inlines }}</small></p>
-{% endfor %}
-</div>
-</div>
 {% endif %}

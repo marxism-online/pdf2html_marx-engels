@@ -20,11 +20,14 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         top_title, book_page_num = header if header else (None, None)
 
-        sig_result = detect_signatures(text_layer)
-        signature_block, sig_top_y = sig_result if sig_result else (None, None)
+        signature_block, sig_top_y, star_footnote = detect_signatures(text_layer)
 
         footnote_result = detect_footnote(text_layer, sig_top_y=sig_top_y)
         footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
+
+        if star_footnote and not footnote_block:
+            footnote_block = star_footnote
+            has_bottom_hr = True
 
         if body_min_y is None and sig_top_y is not None:
             body_min_y = sig_top_y

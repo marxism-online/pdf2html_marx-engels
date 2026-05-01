@@ -10,6 +10,8 @@ class Inline:
     bold: bool = False
     small: bool = False
     em: bool = False
+    sup: bool = False
+    sub: bool = False
 
 @dataclass
 class Paragraph:

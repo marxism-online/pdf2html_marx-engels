@@ -4,6 +4,7 @@ import re
 
 from pdf2html.utils.text_layer import PageTextLayer
 from pdf2html.utils.text_layer import TextLine
+from pdf2html.utils.text_layer import TextSpan
 from pdf2html.utils.types import Heading
 from pdf2html.utils.types import Inline
 from pdf2html.utils.types import PageModel
@@ -108,51 +109,79 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     return headings, heading_body_threshold
 
 
-def detect_signatures(text_layer: PageTextLayer) -> tuple[SignatureBlock, float] | None:
+def detect_signatures(
+    text_layer: PageTextLayer,
+) -> tuple[SignatureBlock | None, float | None, Paragraph | None]:
     """Detect two-column article signatures at bottom of page.
 
-    Returns (SignatureBlock, sig_top_y) or None.
+    Returns (SignatureBlock, sig_top_y, star_footnote).
+    star_footnote: editorial '*'-footnote found below the signature block, if any.
     sig_top_y is the y1 of the topmost signature line, used to limit footnote detection.
     """
     lines = [line for line in text_layer.lines if line.text.strip()]
     if not lines:
-        return None
+        return None, None, None
 
     all_sizes = [l.avg_fontsize for l in lines if l.avg_fontsize is not None]
     if not all_sizes:
-        return None
+        return None, None, None
     all_sizes.sort()
     main_size = all_sizes[len(all_sizes) // 2]
     small_threshold = main_size * 0.85
 
     sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
-    small_lines: list[TextLine] = []
+    all_small: list[TextLine] = []
     for line in sorted_asc:
         fs = line.avg_fontsize
         if fs is not None and fs <= small_threshold:
-            small_lines.append(line)
+            all_small.append(line)
         else:
             break
 
+    if not all_small:
+        return None, None, None
+
+    # Separate '*' editorial footnote lines isolated at the very bottom.
+    # They start with '*' and have a large vertical gap to the next small line.
+    star_lines: list[TextLine] = []
+    small_lines = list(all_small)  # bottom-first
+    while small_lines and small_lines[0].text.strip().startswith("*"):
+        if len(small_lines) > 1:
+            gap = small_lines[1].y0 - small_lines[0].y1
+            if gap > 20:
+                star_lines.append(small_lines.pop(0))
+            else:
+                break
+        else:
+            star_lines.append(small_lines.pop(0))
+            break
+
+    star_para: Paragraph | None = None
+    if star_lines:
+        star_lines.sort(key=lambda l: -l.y0)
+        inlines = _lines_to_inlines(star_lines)
+        if inlines:
+            star_para = Paragraph(inlines=inlines, align="LEFT")
+
     if not small_lines:
-        return None
+        return None, None, star_para
 
     small_lines.sort(key=lambda l: -l.y0)  # reading order
     if small_lines[0].text.strip().startswith("*"):
-        return None  # real footnote, not signatures
+        return None, None, star_para  # remaining lines are also footnote
 
     page_center = text_layer.width / 2
     left_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 < page_center]
     right_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 >= page_center]
 
     if not left_lines or not right_lines:
-        return None
+        return None, None, star_para
 
     sig_top_y = max(l.y1 for l in small_lines)
     return SignatureBlock(
         left=_group_sig_lines(left_lines),
         right=_group_sig_lines(right_lines),
-    ), sig_top_y
+    ), sig_top_y, star_para
 
 
 def _group_sig_lines(lines: list[TextLine]) -> list[Paragraph]:
@@ -178,12 +207,18 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
     """Like _lines_to_inlines but inserts <br> between lines."""
     inlines: list[Inline] = []
     for line in lines:
+        body_size = max((s.fontsize for s in line.spans if s.fontsize), default=0.0)
         parts: list[Inline] = []
         for span in line.spans:
             text = span.text.replace("\n", "").replace("\r", "")
             if not text:
                 continue
-            parts.append(Inline(text=text, italic=_is_italic_font(span.fontname)))
+            parts.append(Inline(
+                text=text,
+                italic=_is_italic_font(span.fontname),
+                sup=_is_superscript(span, line.y0, body_size),
+                sub=_is_subscript(span, line.y1, body_size),
+            ))
         if not parts:
             continue
         if inlines:
@@ -192,10 +227,20 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
 
     merged: list[Inline] = []
     for inline in inlines:
-        if merged and merged[-1].italic == inline.italic and merged[-1].bold == inline.bold:
+        if (merged
+                and merged[-1].italic == inline.italic
+                and merged[-1].bold == inline.bold
+                and merged[-1].sup == inline.sup
+                and merged[-1].sub == inline.sub):
             merged[-1].text += inline.text
         else:
-            merged.append(Inline(text=inline.text, italic=inline.italic, bold=inline.bold))
+            merged.append(Inline(
+                text=inline.text,
+                italic=inline.italic,
+                bold=inline.bold,
+                sup=inline.sup,
+                sub=inline.sub,
+            ))
     return merged
 
 
@@ -390,17 +435,35 @@ def _is_italic_font(fontname: str | None) -> bool:
     return "italic" in fn or "oblique" in fn
 
 
+def _is_superscript(span: TextSpan, line_y0: float, body_size: float) -> bool:
+    if not span.fontsize or not body_size:
+        return False
+    return span.fontsize < body_size * 0.85 and span.y0 > line_y0 + 2.0
+
+
+def _is_subscript(span: TextSpan, line_y1: float, body_size: float) -> bool:
+    if not span.fontsize or not body_size:
+        return False
+    return span.fontsize < body_size * 0.85 and span.y1 < line_y1 - 2.0
+
+
 def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) -> list[Inline]:
-    """Build Inline list from TextLines preserving italic per span, handling hyphen-wrap."""
+    """Build Inline list from TextLines preserving italic/sup/sub per span, handling hyphen-wrap."""
     inlines: list[Inline] = []
 
     for line in lines:
+        body_size = max((s.fontsize for s in line.spans if s.fontsize), default=0.0)
         line_parts: list[Inline] = []
         for span in line.spans:
             text = span.text.replace("\n", "").replace("\r", "")
             if not text:
                 continue
-            line_parts.append(Inline(text=text, italic=_is_italic_font(span.fontname)))
+            line_parts.append(Inline(
+                text=text,
+                italic=_is_italic_font(span.fontname),
+                sup=_is_superscript(span, line.y0, body_size),
+                sub=_is_subscript(span, line.y1, body_size),
+            ))
 
         if not line_parts:
             continue
@@ -419,9 +482,19 @@ def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) ->
     # Merge adjacent inlines with same style
     merged: list[Inline] = []
     for inline in inlines:
-        if merged and merged[-1].italic == inline.italic and merged[-1].bold == inline.bold:
+        if (merged
+                and merged[-1].italic == inline.italic
+                and merged[-1].bold == inline.bold
+                and merged[-1].sup == inline.sup
+                and merged[-1].sub == inline.sub):
             merged[-1].text += inline.text
         else:
-            merged.append(Inline(text=inline.text, italic=inline.italic, bold=inline.bold))
+            merged.append(Inline(
+                text=inline.text,
+                italic=inline.italic,
+                bold=inline.bold,
+                sup=inline.sup,
+                sub=inline.sub,
+            ))
 
     return merged
