@@ -170,6 +170,11 @@ def detect_signatures(
     if small_lines[0].text.strip().startswith("*"):
         return None, None, star_para  # remaining lines are also footnote
 
+    # Reject if any small line is too wide to be a column in a two-column layout
+    text_width = max((l.x1 for l in lines), default=0.0) - min((l.x0 for l in lines), default=0.0)
+    if text_width > 0 and max(l.x1 - l.x0 for l in small_lines) > text_width * 0.55:
+        return None, None, star_para
+
     page_center = text_layer.width / 2
     left_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 < page_center]
     right_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 >= page_center]
@@ -276,6 +281,15 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
 
     if not footnote_lines:
         return None
+
+    # Reject if the small lines are directly adjacent to body text above them —
+    # they're likely a blockquote continuation, not a footnote.
+    fn_top_y = max(l.y1 for l in footnote_lines)
+    body_above = sorted([l for l in lines if l.y0 >= fn_top_y], key=lambda l: l.y0)
+    if body_above:
+        avg_height = sum(l.height for l in footnote_lines) / len(footnote_lines)
+        if body_above[0].y0 - fn_top_y <= avg_height * 1.5:
+            return None
 
     footnote_lines.sort(key=lambda l: -l.y0)  # reading order
     inlines = _lines_to_inlines(footnote_lines, break_on_asterisk=True)
