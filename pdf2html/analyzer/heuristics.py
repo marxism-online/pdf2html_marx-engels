@@ -15,19 +15,26 @@ _RUNNING_HEADER_RE = re.compile(
     r'^(.+?)\s{5,}(\d+|[IVXLCDM]{1,8})\s*$'
 )
 
+# Паттерн: строка — только номер страницы, без имени автора
+_LONE_PAGE_NUM_RE = re.compile(r'^\s*(\d+)\s*$')
+
 
 def detect_running_header(text_layer: PageTextLayer) -> tuple[str, int] | None:
     lines = [line for line in text_layer.lines if line.text.strip()]
     if not lines:
         return None
     m = _RUNNING_HEADER_RE.match(lines[0].text)
-    if not m:
-        return None
-    text_part = m.group(1).strip()
-    num_part = m.group(2)
-    if not num_part.isdigit():
-        return None
-    return f"{num_part} <br>{text_part}", int(num_part)
+    if m:
+        text_part = m.group(1).strip()
+        num_part = m.group(2)
+        if not num_part.isdigit():
+            return None
+        return f"{num_part} <br>{text_part}", int(num_part)
+    m2 = _LONE_PAGE_NUM_RE.match(lines[0].text)
+    if m2:
+        num = int(m2.group(1))
+        return str(num), num
+    return None
 
 
 _CENTERING_TOLERANCE = 30.0  # pts
@@ -59,7 +66,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     page_center = text_layer.width / 2
 
     # Skip running header (first line if it matches the header pattern)
-    start = 1 if _RUNNING_HEADER_RE.match(lines[0].text) else 0
+    start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
 
     heading_lines: list[TextLine] = []
     for line in lines[start:]:
@@ -155,7 +162,7 @@ def _group_sig_lines(lines: list[TextLine]) -> list[Paragraph]:
     for line in lines[1:]:
         prev = groups[-1][-1]
         gap = prev.y0 - line.y1
-        if gap > prev.height * 1.5:
+        if gap > prev.height * 1.2:
             groups.append([line])
         else:
             groups[-1].append(line)
@@ -239,15 +246,20 @@ def detect_paragraphs(
     body_min_y: float | None = None,
     heading_body_threshold: float | None = None,
 ) -> list[Paragraph]:
-    # Compute median font size of body lines to detect small paragraphs
+    # Compute body line bounds and median font size
+    body_lines_all: list[TextLine] = []
     body_sizes: list[float] = []
     for line in text_layer.lines:
         if body_min_y is not None and line.y0 < body_min_y:
             continue
         if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
             continue
+        if line.text.strip():
+            body_lines_all.append(line)
         body_sizes.extend(s.fontsize for s in line.spans if s.fontsize)
     body_median = sorted(body_sizes)[len(body_sizes) // 2] if body_sizes else None
+    body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
+    body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
     paragraphs: list[Paragraph] = []
     current_lines: list[TextLine] = []
@@ -275,13 +287,17 @@ def detect_paragraphs(
             new_paragraph = False
         else:
             vertical_gap = prev_line.y0 - line.y1
-            same_left_edge = abs(prev_line.x0 - line.x0) <= 6.0
 
             new_paragraph = False
 
             if vertical_gap > max(prev_line.height, line.height) * 0.9:
                 new_paragraph = True
             elif line.x0 - prev_line.x0 > 6.0:
+                new_paragraph = True
+            elif prev_line.x0 - line.x0 > 50.0:
+                new_paragraph = True
+            elif prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0:
+                # Короткая строка (конец абзаца) перед отступной строкой
                 new_paragraph = True
 
         if new_paragraph:
@@ -303,7 +319,10 @@ def detect_paragraphs(
 
 
 def detect_quotes(pm: PageModel) -> PageModel:
-    # Пока цитаты отдельно не выделяем.
+    for p in pm.blocks:
+        if p.is_small and p.align == "JUSTIFY":
+            p.is_quote = True
+            p.is_small = False
     return pm
 
 
