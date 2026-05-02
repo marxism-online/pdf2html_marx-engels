@@ -278,35 +278,26 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
     if not lines:
         return None
 
-    all_sizes = [l.avg_fontsize for l in lines if l.avg_fontsize is not None]
-    if not all_sizes:
-        return None
-
-    all_sizes.sort()
-    main_size = all_sizes[int(len(all_sizes) * 0.9)]
-    small_threshold = main_size * 0.85
-
     sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
 
-    footnote_lines = []
-    for line in sorted_asc:
-        fs = line.avg_fontsize
-        if fs is not None and fs <= small_threshold:
-            footnote_lines.append(line)
-        else:
+    # Collect lines from the bottom until a significant gap (the HR separator).
+    # Normal inter-line spacing is 1–4 pt; an HR creates a gap of 10 pt or more.
+    footnote_lines = [sorted_asc[0]]
+    for line in sorted_asc[1:]:
+        prev = footnote_lines[-1]
+        if line.y0 - prev.y1 > prev.height * 2.0:
             break
+        footnote_lines.append(line)
 
-    if not footnote_lines:
-        return None
-
-    # Reject if the small lines are directly adjacent to body text above them —
-    # they're likely a blockquote continuation, not a footnote.
+    # Validate: the collected block must be separated from the body above by a
+    # significant gap — that gap is the HR rule visible in the PDF.
     fn_top_y = max(l.y1 for l in footnote_lines)
     body_above = sorted([l for l in lines if l.y0 >= fn_top_y], key=lambda l: l.y0)
-    if body_above:
-        avg_height = sum(l.height for l in footnote_lines) / len(footnote_lines)
-        if body_above[0].y0 - fn_top_y <= avg_height * 1.5:
-            return None
+    if not body_above:
+        return None
+    avg_height = sum(l.height for l in footnote_lines) / len(footnote_lines)
+    if body_above[0].y0 - fn_top_y < avg_height * 2.0:
+        return None
 
     footnote_lines.sort(key=lambda l: -l.y0)  # reading order
     inlines = _lines_to_inlines(footnote_lines, break_on_asterisk=True)
