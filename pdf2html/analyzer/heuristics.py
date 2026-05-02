@@ -309,6 +309,31 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
     return para, top_y, is_footnote
 
 
+def _is_paragraph_break(
+    prev_line: TextLine,
+    line: TextLine,
+    body_x0: float,
+    body_x1: float,
+) -> bool:
+    """True if a paragraph boundary exists between prev_line and line.
+
+    Indent-based conditions (indent, outdent, short-line) only apply when the
+    previous line started near the body left margin — they make no sense for
+    right-aligned or otherwise offset lines.
+    """
+    vertical_gap = prev_line.y0 - line.y1
+    if vertical_gap > max(prev_line.height, line.height) * 0.9:
+        return True
+    if prev_line.x0 < body_x0 + 20.0:
+        if line.x0 - prev_line.x0 > 6.0:
+            return True
+        if prev_line.x0 - line.x0 > 50.0:
+            return True
+        if prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0:
+            return True
+    return False
+
+
 def detect_paragraphs(
     text_layer: PageTextLayer,
     body_min_y: float | None = None,
@@ -354,20 +379,7 @@ def detect_paragraphs(
         if _ends_with_hyphen_wrap(prev_text):
             new_paragraph = False
         else:
-            vertical_gap = prev_line.y0 - line.y1
-
-            new_paragraph = False
-
-            if vertical_gap > max(prev_line.height, line.height) * 0.9:
-                new_paragraph = True
-            elif line.x0 - prev_line.x0 > 6.0 and prev_line.x0 < body_x0 + 20.0:
-                new_paragraph = True
-            elif prev_line.x0 - line.x0 > 50.0:
-                new_paragraph = True
-            elif (prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0
-                  and prev_line.x0 < body_x0 + 20.0):
-                # Короткая строка (конец абзаца) перед отступной строкой
-                new_paragraph = True
+            new_paragraph = _is_paragraph_break(prev_line, line, body_x0, body_x1)
 
         if new_paragraph:
             para = _build_paragraph(current_lines, body_median, body_x0, body_x1)
