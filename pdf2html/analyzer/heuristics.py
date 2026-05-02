@@ -339,6 +339,9 @@ def _is_paragraph_break(
             return True
         if prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0:
             return True
+    # Offset line (right-aligned date, signature) before a body-left line
+    if prev_line.x0 > body_x0 + 50.0 and line.x0 < body_x0 + 20.0:
+        return True
     return False
 
 
