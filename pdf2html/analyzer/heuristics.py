@@ -41,6 +41,15 @@ def detect_running_header(text_layer: PageTextLayer) -> tuple[str, int] | None:
 _CENTERING_TOLERANCE = 30.0  # pts
 
 
+def _is_all_caps_line(text: str) -> bool:
+    """True if all alphabetic words longer than 1 char are uppercase.
+    Single-char words (conjunctions/prepositions like 'и', 'в') are ignored.
+    """
+    words = re.findall(r'[а-яёА-ЯЁa-zA-Z]+', text)
+    long_words = [w for w in words if len(w) > 1]
+    return bool(long_words) and all(w == w.upper() for w in long_words)
+
+
 def _is_bold_font(fontname: str | None) -> bool:
     if not fontname:
         return False
@@ -74,7 +83,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         text = line.text.strip()
         if not any(c.isalpha() for c in text):
             continue
-        if text.upper() != text:
+        if not _is_all_caps_line(text):
             break
         line_center = (line.x0 + line.x1) / 2
         if abs(line_center - page_center) <= _CENTERING_TOLERANCE:
@@ -126,7 +135,7 @@ def detect_signatures(
     if not all_sizes:
         return None, None, None
     all_sizes.sort()
-    main_size = all_sizes[len(all_sizes) // 2]
+    main_size = all_sizes[int(len(all_sizes) * 0.9)]
     small_threshold = main_size * 0.85
 
     sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
@@ -141,25 +150,24 @@ def detect_signatures(
     if not all_small:
         return None, None, None
 
-    # Separate '*' editorial footnote lines isolated at the very bottom.
-    # They start with '*' and have a large vertical gap to the next small line.
+    # Separate '*' editorial footnote lines at the very bottom.
+    # Collect the entire contiguous block of star lines, then verify they are
+    # separated from the remaining small lines (signature) by a meaningful gap.
     star_lines: list[TextLine] = []
     small_lines = list(all_small)  # bottom-first
     while small_lines and small_lines[0].text.strip().startswith("*"):
-        if len(small_lines) > 1:
-            gap = small_lines[1].y0 - small_lines[0].y1
-            if gap > 20:
-                star_lines.append(small_lines.pop(0))
-            else:
-                break
-        else:
-            star_lines.append(small_lines.pop(0))
-            break
+        star_lines.append(small_lines.pop(0))
+    if star_lines and small_lines:
+        # gap between top of star block and bottom of the line just above it
+        gap = small_lines[0].y0 - star_lines[-1].y1
+        if gap <= 20:
+            small_lines = star_lines + small_lines
+            star_lines = []
 
     star_para: Paragraph | None = None
     if star_lines:
         star_lines.sort(key=lambda l: -l.y0)
-        inlines = _lines_to_inlines(star_lines)
+        inlines = _lines_to_inlines(star_lines, break_on_asterisk=True)
         if inlines:
             star_para = Paragraph(inlines=inlines, align="LEFT")
 
@@ -221,6 +229,7 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
             parts.append(Inline(
                 text=text,
                 italic=_is_italic_font(span.fontname),
+                bold=_is_bold_font(span.fontname),
                 sup=_is_superscript(span, line.y0, body_size),
                 sub=_is_subscript(span, line.y1, body_size),
             ))
@@ -266,7 +275,7 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
         return None
 
     all_sizes.sort()
-    main_size = all_sizes[len(all_sizes) // 2]
+    main_size = all_sizes[int(len(all_sizes) * 0.9)]
     small_threshold = main_size * 0.85
 
     sorted_asc = sorted(lines, key=lambda l: l.y0)  # bottom-first
@@ -351,16 +360,17 @@ def detect_paragraphs(
 
             if vertical_gap > max(prev_line.height, line.height) * 0.9:
                 new_paragraph = True
-            elif line.x0 - prev_line.x0 > 6.0:
+            elif line.x0 - prev_line.x0 > 6.0 and prev_line.x0 < body_x0 + 20.0:
                 new_paragraph = True
             elif prev_line.x0 - line.x0 > 50.0:
                 new_paragraph = True
-            elif prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0:
+            elif (prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0
+                  and prev_line.x0 < body_x0 + 20.0):
                 # Короткая строка (конец абзаца) перед отступной строкой
                 new_paragraph = True
 
         if new_paragraph:
-            para = _build_paragraph(current_lines, text_layer.width, body_median)
+            para = _build_paragraph(current_lines, body_median, body_x0, body_x1)
             if para is not None:
                 paragraphs.append(para)
             current_lines = [line]
@@ -370,7 +380,7 @@ def detect_paragraphs(
         prev_line = line
 
     if current_lines:
-        para = _build_paragraph(current_lines, text_layer.width, body_median)
+        para = _build_paragraph(current_lines, body_median, body_x0, body_x1)
         if para is not None:
             paragraphs.append(para)
 
@@ -387,10 +397,18 @@ def detect_quotes(pm: PageModel) -> PageModel:
 
 def _build_paragraph(
     lines: list[TextLine],
-    page_width: float = 0.0,
     body_fontsize: float | None = None,
+    body_x0: float = 0.0,
+    body_x1: float = 0.0,
 ) -> Paragraph | None:
-    inlines = _lines_to_inlines(lines)
+    # Detect alignment first — RIGHT paragraphs use <br> between lines
+    para_x0 = min(l.x0 for l in lines)
+    para_x1 = max(l.x1 for l in lines)
+    left_indent = para_x0 - body_x0
+    right_indent = body_x1 - para_x1
+    align: str = "RIGHT" if left_indent > right_indent * 2 and left_indent > 50 else "JUSTIFY"
+
+    inlines = _lines_to_inlines_br(lines) if align == "RIGHT" else _lines_to_inlines(lines)
     if not inlines or not any(i.text.strip() for i in inlines):
         return None
 
@@ -401,12 +419,6 @@ def _build_paragraph(
         if sizes:
             para_median = sorted(sizes)[len(sizes) // 2]
             is_small = para_median < body_fontsize * 0.85
-
-    # Detect right alignment: left margin significantly larger than right margin
-    para_x0 = min(l.x0 for l in lines)
-    para_x1 = max(l.x1 for l in lines)
-    right_margin = page_width - para_x1
-    align: str = "RIGHT" if para_x0 > right_margin * 3 and para_x0 > 50 else "JUSTIFY"
 
     return Paragraph(inlines=inlines, align=align, is_small=is_small)
 
@@ -475,6 +487,7 @@ def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) ->
             line_parts.append(Inline(
                 text=text,
                 italic=_is_italic_font(span.fontname),
+                bold=_is_bold_font(span.fontname),
                 sup=_is_superscript(span, line.y0, body_size),
                 sub=_is_subscript(span, line.y1, body_size),
             ))
