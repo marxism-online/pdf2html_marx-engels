@@ -79,9 +79,13 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
 
     heading_lines: list[TextLine] = []
+    orphan_sups: list[TextLine] = []
     for line in lines[start:]:
         text = line.text.strip()
         if not any(c.isalpha() for c in text):
+            # Non-alphabetic lines inside the heading block (e.g. footnote numbers
+            # like "278") are superscripts — collect and attach at the end.
+            orphan_sups.append(line)
             continue
         if not _is_all_caps_line(text):
             break
@@ -112,9 +116,13 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         rendered.append(text)
 
     combined = "<br><br>".join(rendered)
+    if orphan_sups:
+        combined += "".join(f"<sup>{l.text.strip()}</sup>" for l in orphan_sups)
+
     headings = [Heading(level=2, text=combined, align="CENTER")]
 
-    heading_body_threshold = min(l.y0 for l in heading_lines)
+    all_heading_lines = heading_lines + orphan_sups
+    heading_body_threshold = min(l.y0 for l in all_heading_lines)
     return headings, heading_body_threshold
 
 
