@@ -267,9 +267,7 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
 
 
 def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -> tuple[Paragraph, float, bool] | None:
-    """Returns (paragraph, body_min_y, is_footnote).
-    is_footnote=True when text starts with *, meaning a real footnote with HR.
-    is_footnote=False for closing signatures (no HR).
+    """Returns (paragraph, body_min_y, True) for a "*"-prefixed editorial footnote.
     sig_top_y: if provided, ignore lines with y0 < sig_top_y (they belong to signatures).
     """
     lines = [line for line in text_layer.lines if line.text.strip()]
@@ -300,12 +298,18 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
         return None
 
     footnote_lines.sort(key=lambda l: -l.y0)  # reading order
+
+    # Only accept as footnote if it starts with "*" — that's the editorial marker.
+    # Without this check, body text separated from a heading above by a large gap
+    # would be misidentified as a footnote.
+    if not footnote_lines[0].text.strip().startswith("*"):
+        return None
+
     inlines = _lines_to_inlines(footnote_lines, break_on_asterisk=True)
     para = Paragraph(inlines=inlines, align="LEFT")
 
     top_y = max(l.y1 for l in footnote_lines)
-    is_footnote = footnote_lines[0].text.strip().startswith("*")
-    return para, top_y, is_footnote
+    return para, top_y, True
 
 
 def _is_paragraph_break(
