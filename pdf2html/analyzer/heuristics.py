@@ -60,6 +60,10 @@ def _line_is_bold(line: TextLine) -> bool:
     return any(_is_bold_font(s.fontname) for s in line.spans)
 
 
+def _line_is_italic(line: TextLine) -> bool:
+    return any(_is_italic_font(s.fontname) for s in line.spans)
+
+
 def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None]:
     """Return (headings, heading_body_threshold).
 
@@ -88,6 +92,8 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
             orphan_sups.append(line)
             continue
         if not _is_all_caps_line(text):
+            break
+        if _line_is_italic(line):
             break
         line_center = (line.x0 + line.x1) / 2
         if abs(line_center - page_center) <= _CENTERING_TOLERANCE:
@@ -356,7 +362,9 @@ def detect_paragraphs(
         if line.text.strip():
             body_lines_all.append(line)
         body_sizes.extend(s.fontsize for s in line.spans if s.fontsize)
-    body_median = sorted(body_sizes)[len(body_sizes) // 2] if body_sizes else None
+    # Use 75th percentile instead of median: a large inline quote block can
+    # push the median down to the quote's font size, masking the real body size.
+    body_median = sorted(body_sizes)[int(len(body_sizes) * 0.75)] if body_sizes else None
     body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
     body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
@@ -405,11 +413,28 @@ def detect_paragraphs(
     return paragraphs
 
 
+_CLOSING_QUOTE_RE = re.compile(r'(?<!\s)[»""]\s*[.,:;!?]?\s*$')
+_OPENING_QUOTE_RE = re.compile(r'[«"„]')
+
+
+def _is_quote_tail(para: Paragraph) -> bool:
+    """Closing fragment of a cross-page quote: ends with word-adjacent » but has no opening «.
+
+    The opening guillemet was on the previous page, so the only trace here is
+    the closing guillemet at the end of this paragraph.
+    """
+    text = "".join(il.text for il in para.inlines)
+    return bool(_CLOSING_QUOTE_RE.search(text)) and not bool(_OPENING_QUOTE_RE.search(text))
+
+
 def detect_quotes(pm: PageModel) -> PageModel:
     for p in pm.blocks:
-        if p.is_small and p.align == "JUSTIFY":
-            p.is_quote = True
-            p.is_small = False
+        if p.align == "JUSTIFY":
+            if p.is_small:
+                p.is_quote = True
+                p.is_small = False
+            elif _is_quote_tail(p):
+                p.is_quote = True
     return pm
 
 
@@ -424,9 +449,14 @@ def _build_paragraph(
     para_x1 = max(l.x1 for l in lines)
     left_indent = para_x0 - body_x0
     right_indent = body_x1 - para_x1
-    align: str = "RIGHT" if left_indent > right_indent * 2 and left_indent > 50 else "JUSTIFY"
+    if left_indent > 30 and abs(left_indent - right_indent) <= 30:
+        align = "CENTER"
+    elif left_indent > right_indent * 2 and left_indent > 50:
+        align = "RIGHT"
+    else:
+        align = "JUSTIFY"
 
-    inlines = _lines_to_inlines_br(lines) if align == "RIGHT" else _lines_to_inlines(lines)
+    inlines = _lines_to_inlines_br(lines) if align in ("RIGHT", "CENTER") else _lines_to_inlines(lines)
     if not inlines or not any(i.text.strip() for i in inlines):
         return None
 

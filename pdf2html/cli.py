@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .analyzer.layout import StructureAnalyzer
@@ -29,14 +30,24 @@ def main() -> None:
     fmt = HtmlFormatter()
 
     parts: list[str] = []
+    total = len(selected_pages) if selected_pages else None
+    done = 0
 
     for page_no, layout in reader.iter_pages(args.pdf, selected_pages=selected_pages):
+        done += 1
+        if total:
+            pct = done * 100 // total
+            print(f"\r[{done}/{total}] стр. {page_no} ({pct}%)", end="", file=sys.stderr)
+        else:
+            print(f"\rстр. {page_no}", end="", file=sys.stderr)
+
         pm = analyzer.build_page_model(page_no, layout)
         if page_no == 1:
             parts.append(fmt.render_first_page(pm))
         else:
             parts.append(fmt.render_page(pm))
 
+    print(file=sys.stderr)
     Path(args.out).write_text("\n".join(parts) + "\n", encoding="utf-8")
 
 
