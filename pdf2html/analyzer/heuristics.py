@@ -77,51 +77,70 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     if not lines:
         return [], None
 
-    page_center = text_layer.width / 2
-
     # Skip running header (first line if it matches the header pattern)
     start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
 
     heading_lines: list[TextLine] = []
     orphan_sups: list[TextLine] = []
+    # Center is established from the first heading line — not assumed to be the
+    # page center. This handles title pages where the block sits right-of-center.
+    expected_center: float | None = None
     for line in lines[start:]:
         text = line.text.strip()
         if not any(c.isalpha() for c in text):
-            # Non-alphabetic lines inside the heading block (e.g. footnote numbers
-            # like "278") are superscripts — collect and attach at the end.
-            orphan_sups.append(line)
+            if text.isdigit():
+                # Numeric-only lines (e.g. "286") become <sup> at the end.
+                orphan_sups.append(line)
+            else:
+                # Non-numeric decorators (e.g. "———") join the heading if centered.
+                if expected_center is not None:
+                    line_center = (line.x0 + line.x1) / 2
+                    if abs(line_center - expected_center) <= _CENTERING_TOLERANCE:
+                        heading_lines.append(line)
             continue
         if not _is_all_caps_line(text):
             break
         if _line_is_italic(line):
             break
         line_center = (line.x0 + line.x1) / 2
-        if abs(line_center - page_center) <= _CENTERING_TOLERANCE:
-            heading_lines.append(line)
-        else:
+        if expected_center is None:
+            expected_center = line_center
+        elif abs(line_center - expected_center) > _CENTERING_TOLERANCE:
             break
+        heading_lines.append(line)
 
     if not heading_lines:
         return [], None
 
-    # Group consecutive lines by bold/non-bold font
-    groups: list[tuple[bool, list[TextLine]]] = []
+    # Split heading lines at dash-only separator lines (e.g. "———").
+    # Each segment is rendered independently; segments are joined with <hr>.
+    _DASH_SEP_RE = re.compile(r'^[—–\-\s]+$')
+    _HR = '<hr style="width:30%; border:none; border-top:1px solid; margin:4px auto;">'
+
+    segments: list[list[TextLine]] = [[]]
     for line in heading_lines:
-        bold = _line_is_bold(line)
-        if groups and groups[-1][0] == bold:
-            groups[-1][1].append(line)
+        if _DASH_SEP_RE.match(line.text.strip()):
+            segments.append([])
         else:
-            groups.append((bold, [line]))
+            segments[-1].append(line)
+    segments = [s for s in segments if s]
 
-    rendered: list[str] = []
-    for is_bold, group_lines in groups:
-        parts = [l.text.strip() for l in group_lines]
-        text = "<br>".join(parts)
-        if is_bold:
-            text = f"<b>{text}</b>"
-        rendered.append(text)
+    rendered_segments: list[str] = []
+    for segment in segments:
+        groups: list[tuple[bool, list[TextLine]]] = []
+        for line in segment:
+            bold = _line_is_bold(line)
+            if groups and groups[-1][0] == bold:
+                groups[-1][1].append(line)
+            else:
+                groups.append((bold, [line]))
+        parts: list[str] = []
+        for is_bold, group_lines in groups:
+            text = "<br>".join(l.text.strip() for l in group_lines)
+            parts.append(f"<b>{text}</b>" if is_bold else text)
+        rendered_segments.append("<br><br>".join(parts))
 
-    combined = "<br><br>".join(rendered)
+    combined = _HR.join(rendered_segments)
     if orphan_sups:
         combined += "".join(f"<sup>{l.text.strip()}</sup>" for l in orphan_sups)
 
