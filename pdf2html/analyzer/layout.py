@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pdfminer.layout import LTFigure
+
 from pdf2html.analyzer.heuristics import detect_footnote
 from pdf2html.analyzer.heuristics import detect_headings
 from pdf2html.analyzer.heuristics import detect_paragraphs
@@ -56,4 +58,8 @@ class StructureAnalyzer:
         )
 
         detect_quotes(pm)
+
+        if any(isinstance(obj, LTFigure) for obj in layout):
+            pm.is_illustration = True
+
         return pm

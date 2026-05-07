@@ -45,3 +45,5 @@ class PageModel:
     footnote_block: Optional[Paragraph] = None
     has_bottom_hr: bool = False
     signature_block: Optional[SignatureBlock] = None
+    is_illustration: bool = False
+    image_src: Optional[str] = None
