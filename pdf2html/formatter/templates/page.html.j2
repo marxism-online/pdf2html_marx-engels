@@ -1,7 +1,7 @@
 {{ nextpage }}
 <a name="{{ anchor }}"> </a>
 {% if pm.is_illustration %}
-{% if pm.image_src %}<img align="CENTER" src="{{ pm.image_src }}">{% endif %}
+{% if pm.image_src %}<img align="CENTER" style="max-width: 100%; height: auto;" src="{{ pm.image_src }}">{% endif %}
 {% for p in pm.blocks %}
 <p align="CENTER">{{ p | render_inlines }}</p>
 {% endfor %}
