@@ -7,6 +7,8 @@ from pathlib import Path
 
 from .analyzer.image_extractor import extract_illustration_image
 from .analyzer.layout import StructureAnalyzer
+from .analyzer.text_extractor import PdfTextExtractor
+from .analyzer.heuristics import detect_running_header
 from .formatter.html_rules import HtmlFormatter
 from .logging_setup import setup_logging
 from .reader.pdf_text import PdfTextReader
@@ -18,6 +20,34 @@ def _parse_volume(pdf_path: str, volume_arg: int | None) -> int | None:
         return volume_arg
     m = re.search(r"(\d+)", Path(pdf_path).stem)
     return int(m.group(1)) if m else None
+
+
+def _prescan_page_numbers(pdf_path: str, selected_pages: set[int] | None) -> dict[int, int]:
+    """Quick pre-scan: collect Arabic page numbers, infer backward from first numbered page."""
+    reader = PdfTextReader()
+    ext = PdfTextExtractor()
+    known: dict[int, int] = {}
+
+    for page_no, layout in reader.iter_pages(pdf_path, selected_pages=selected_pages):
+        tl = ext.extract_page_text_layer(page_no, layout)
+        header = detect_running_header(tl)
+        if header is not None:
+            known[page_no] = header[1]
+
+    if not known:
+        return {}
+
+    first_pdf = min(known)
+    first_book = known[first_pdf]
+
+    result = dict(known)
+    pages = sorted(selected_pages) if selected_pages else list(range(1, first_pdf))
+    for pdf_page in reversed([p for p in pages if p < first_pdf]):
+        book_page = first_book - (first_pdf - pdf_page)
+        if book_page >= 1:
+            result[pdf_page] = book_page
+
+    return result
 
 
 def main() -> None:
@@ -38,17 +68,24 @@ def main() -> None:
     volume = _parse_volume(args.pdf, args.volume)
     out_dir = Path(args.out).parent
 
+    print("Определение нумерации...", end=" ", file=sys.stderr)
+    page_numbers = _prescan_page_numbers(args.pdf, selected_pages)
+    print("готово", file=sys.stderr)
+
+    first_content_page = min(page_numbers) if page_numbers else None
+
     reader = PdfTextReader()
     analyzer = StructureAnalyzer()
-    fmt = HtmlFormatter()
+    fmt = HtmlFormatter(page_numbers=page_numbers)
 
     parts: list[str] = []
     total = len(selected_pages) if selected_pages else None
     done = 0
-    last_pdf_page: int | None = None
-    last_book_page: int | None = None
+    first_rendered = True
 
     for page_no, layout in reader.iter_pages(args.pdf, selected_pages=selected_pages):
+        if first_content_page and page_no < first_content_page:
+            continue
         done += 1
         if total:
             pct = done * 100 // total
@@ -58,19 +95,10 @@ def main() -> None:
 
         pm = analyzer.build_page_model(page_no, layout)
 
-        if pm.book_page_num is not None:
-            last_pdf_page = page_no
-            last_book_page = pm.book_page_num
-
         if pm.is_illustration:
             img_bytes = extract_illustration_image(layout)
             if img_bytes and volume is not None:
-                if pm.book_page_num is not None:
-                    book_page = pm.book_page_num
-                elif last_book_page is not None:
-                    book_page = last_book_page + (page_no - last_pdf_page)
-                else:
-                    book_page = page_no
+                book_page = page_numbers.get(page_no, page_no)
                 img_name = f"{volume:02d}-{book_page}.jpg"
                 (out_dir / img_name).write_bytes(img_bytes)
                 pm.image_src = img_name
@@ -78,7 +106,8 @@ def main() -> None:
         if page_no == 1:
             parts.append(fmt.render_first_page(pm))
         else:
-            parts.append(fmt.render_page(pm))
+            parts.append(fmt.render_page(pm, first=first_rendered))
+        first_rendered = False
 
     print(file=sys.stderr)
     Path(args.out).write_text("\n".join(parts) + "\n", encoding="utf-8")
