@@ -23,7 +23,7 @@ class Paragraph:
 
 @dataclass
 class Heading:
-    level: Literal[2, 3]
+    level: Literal[1, 2, 3]
     text: str
     align: Align = "CENTER"
     bold: bool = False

@@ -64,6 +64,14 @@ def _line_is_italic(line: TextLine) -> bool:
     return any(_is_italic_font(s.fontname) for s in line.spans)
 
 
+def _line_is_red(line: TextLine) -> bool:
+    for span in line.spans:
+        c = span.color
+        if isinstance(c, tuple) and len(c) >= 3 and c[0] > 0.8 and c[1] < 0.2 and c[2] < 0.2:
+            return True
+    return False
+
+
 def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None]:
     """Return (headings, heading_body_threshold).
 
@@ -99,6 +107,13 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
                         heading_lines.append(line)
             continue
         if not _is_all_caps_line(text):
+            # Allow single-char connectors ("и", "в") if centered between heading lines.
+            words = re.findall(r'[а-яёА-ЯЁa-zA-Z]+', text)
+            if words and all(len(w) == 1 for w in words) and expected_center is not None:
+                line_center = (line.x0 + line.x1) / 2
+                if abs(line_center - expected_center) <= _CENTERING_TOLERANCE:
+                    heading_lines.append(line)
+                    continue
             break
         if _line_is_italic(line):
             break
@@ -144,7 +159,8 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     if orphan_sups:
         combined += "".join(f"<sup>{l.text.strip()}</sup>" for l in orphan_sups)
 
-    headings = [Heading(level=2, text=combined, align="CENTER")]
+    level = 1 if (heading_lines and _line_is_red(heading_lines[0])) else 2
+    headings = [Heading(level=level, text=combined, align="CENTER")]
 
     all_heading_lines = heading_lines + orphan_sups
     heading_body_threshold = min(l.y0 for l in all_heading_lines)
@@ -415,7 +431,7 @@ def detect_paragraphs(
             new_paragraph = _is_paragraph_break(prev_line, line, body_x0, body_x1)
 
         if new_paragraph:
-            para = _build_paragraph(current_lines, body_median, body_x0, body_x1)
+            para = _build_paragraph(current_lines, body_median, body_x0, body_x1, text_layer.width)
             if para is not None:
                 paragraphs.append(para)
             current_lines = [line]
@@ -425,7 +441,7 @@ def detect_paragraphs(
         prev_line = line
 
     if current_lines:
-        para = _build_paragraph(current_lines, body_median, body_x0, body_x1)
+        para = _build_paragraph(current_lines, body_median, body_x0, body_x1, text_layer.width)
         if para is not None:
             paragraphs.append(para)
 
@@ -462,6 +478,7 @@ def _build_paragraph(
     body_fontsize: float | None = None,
     body_x0: float = 0.0,
     body_x1: float = 0.0,
+    page_width: float = 0.0,
 ) -> Paragraph | None:
     # Detect alignment first — RIGHT paragraphs use <br> between lines
     para_x0 = min(l.x0 for l in lines)
@@ -470,6 +487,15 @@ def _build_paragraph(
     right_indent = body_x1 - para_x1
     if left_indent > 30 and abs(left_indent - right_indent) <= 30:
         align = "CENTER"
+    elif page_width > 0 and para_x1 - para_x0 < page_width * 0.7:
+        # Fallback: narrow paragraph centered on the page (title pages with no body reference)
+        para_center = (para_x0 + para_x1) / 2
+        if abs(para_center - page_width / 2) <= 15:
+            align = "CENTER"
+        elif left_indent > right_indent * 2 and left_indent > 50:
+            align = "RIGHT"
+        else:
+            align = "JUSTIFY"
     elif left_indent > right_indent * 2 and left_indent > 50:
         align = "RIGHT"
     else:

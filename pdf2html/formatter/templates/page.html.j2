@@ -12,7 +12,7 @@
 <p align="CENTER">{{ pm.top_title | safe }}</p>
 {% endif %}
 {% for h in pm.headings %}
-<h{{ h.level }} align="{{ h.align }}">{{ h.text | safe }}</h{{ h.level }}>
+<h{{ h.level }} align="{{ h.align }}"{% if h.level == 1 %} style="padding-top: 30vh;"{% endif %}>{{ h.text | safe }}</h{{ h.level }}>
 {% endfor %}
 {% for p in pm.blocks %}
 {% if p.is_quote %}

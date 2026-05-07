@@ -68,15 +68,17 @@ class PdfTextExtractor:
         current_chars: list[LTChar] = []
         current_fontname: str | None = None
         current_fontsize: float | None = None
+        current_color: tuple[float, ...] | None = None
 
         def flush_span() -> None:
-            nonlocal current_text, current_chars, current_fontname, current_fontsize
+            nonlocal current_text, current_chars, current_fontname, current_fontsize, current_color
 
             if not current_text or not current_chars:
                 current_text = []
                 current_chars = []
                 current_fontname = None
                 current_fontsize = None
+                current_color = None
                 return
 
             spans.append(
@@ -88,6 +90,7 @@ class PdfTextExtractor:
                     y1=max(ch.y1 for ch in current_chars),
                     fontname=current_fontname,
                     fontsize=current_fontsize,
+                    color=current_color,
                 )
             )
 
@@ -95,11 +98,14 @@ class PdfTextExtractor:
             current_chars = []
             current_fontname = None
             current_fontsize = None
+            current_color = None
 
         for elem in line_obj:
             if isinstance(elem, LTChar):
                 fontname = getattr(elem, "fontname", None)
                 fontsize = float(getattr(elem, "size", 0.0))
+                ncolor = getattr(getattr(elem, "graphicstate", None), "ncolor", None)
+                color = tuple(ncolor) if isinstance(ncolor, (list, tuple)) else None
 
                 if (
                     current_fontname is not None
@@ -115,6 +121,8 @@ class PdfTextExtractor:
                     current_fontname = fontname
                 if current_fontsize is None:
                     current_fontsize = fontsize
+                if current_color is None:
+                    current_color = color
             else:
                 text = elem.get_text()
                 if text:

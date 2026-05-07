@@ -12,6 +12,7 @@ class TextSpan:
     y1: float
     fontname: str | None = None
     fontsize: float | None = None
+    color: tuple[float, ...] | None = None
 
     @property
     def width(self) -> float:
