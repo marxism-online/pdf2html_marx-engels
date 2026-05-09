@@ -37,7 +37,7 @@ class SignatureBlock:
 class PageModel:
     page_num: int
     book_page_num: Optional[int] = None
-    top_title: Optional[str] = None
+    running_header: Optional[tuple[str, int]] = None
     author: Optional[str] = None
     work_title: Optional[str] = None
     headings: List[Heading] = field(default_factory=list)

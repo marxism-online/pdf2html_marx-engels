@@ -30,11 +30,11 @@ def detect_running_header(text_layer: PageTextLayer) -> tuple[str, int] | None:
         num_part = m.group(2)
         if not num_part.isdigit():
             return None
-        return f"{num_part} <br>{text_part}", int(num_part)
+        return text_part, int(num_part)
     m2 = _LONE_PAGE_NUM_RE.match(lines[0].text)
     if m2:
         num = int(m2.group(1))
-        return str(num), num
+        return "", num
     return None
 
 

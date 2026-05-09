@@ -20,7 +20,7 @@ class StructureAnalyzer:
         text_layer = self.text_extractor.extract_page_text_layer(page_no, layout)
 
         header = detect_running_header(text_layer)
-        top_title, book_page_num = header if header else (None, None)
+        book_page_num = header[1] if header else None
 
         signature_block, sig_top_y, star_footnote = detect_signatures(text_layer)
 
@@ -43,13 +43,13 @@ class StructureAnalyzer:
             )
         else:
             blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
-            if top_title and blocks:
+            if header and blocks:
                 blocks = blocks[1:]
 
         pm = PageModel(
             page_num=page_no,
             book_page_num=book_page_num,
-            top_title=top_title,
+            running_header=header,
             headings=headings,
             blocks=blocks,
             footnote_block=footnote_block,

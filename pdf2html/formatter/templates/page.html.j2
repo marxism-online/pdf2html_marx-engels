@@ -5,11 +5,12 @@
 {% for p in pm.blocks %}
 <p align="CENTER">{{ p | render_inlines }}</p>
 {% endfor %}
-{% elif not pm.blocks and not pm.headings and not pm.top_title and not pm.footnote_block and not pm.signature_block %}
+{% elif not pm.blocks and not pm.headings and not pm.running_header and not pm.footnote_block and not pm.signature_block %}
 <p>&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;</p>
 {% else %}
-{% if pm.top_title %}
-<p align="CENTER">{{ pm.top_title | safe }}</p>
+{% if pm.running_header %}
+<p style="position:relative; text-align:center; margin-bottom:2px;">{{ pm.running_header[0] }}<span style="position:absolute; right:0;">{{ pm.running_header[1] }}</span></p>
+<hr>
 {% endif %}
 {% for h in pm.headings %}
 <h{{ h.level }} align="{{ h.align }}"{% if h.level == 1 %} style="padding-top: 30vh;"{% endif %}>{{ h.text | safe }}</h{{ h.level }}>
