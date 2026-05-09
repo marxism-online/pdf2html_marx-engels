@@ -36,5 +36,5 @@ class HtmlFormatter:
         return tmpl.render(
             pm=pm,
             anchor=self._resolve_anchor(pm),
-            nextpage="" if first else "<hr><!--nextpage-->",
+            nextpage="" if first else "<!--nextpage-->",
         ).strip()
