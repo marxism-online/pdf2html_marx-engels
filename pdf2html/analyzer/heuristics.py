@@ -130,7 +130,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     # Split heading lines at dash-only separator lines (e.g. "———").
     # Each segment is rendered independently; segments are joined with <hr>.
     _DASH_SEP_RE = re.compile(r'^[—–\-\s]+$')
-    _HR = '<hr style="width:30%; border:none; border-top:1px solid; margin:4px auto;">'
+    _HR = '<hr class="heading-hr">'
 
     segments: list[list[TextLine]] = [[]]
     for line in heading_lines:
@@ -236,10 +236,15 @@ def detect_signatures(
     left_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 < page_center]
     right_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 >= page_center]
 
-    if not left_lines or not right_lines:
-        return None, None, star_para
-
     sig_top_y = max(l.y1 for l in small_lines)
+
+    if not left_lines or not right_lines:
+        only = left_lines or right_lines
+        return SignatureBlock(
+            left=_group_sig_lines(only),
+            right=[],
+        ), sig_top_y, star_para
+
     return SignatureBlock(
         left=_group_sig_lines(left_lines),
         right=_group_sig_lines(right_lines),

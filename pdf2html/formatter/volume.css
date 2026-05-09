@@ -1,0 +1,45 @@
+/* Колонтитул страницы: название работы или имя автора по центру */
+.running-header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 2px;
+}
+
+/* Номер страницы в колонтитуле — прижат к правому краю */
+.running-header .page-num {
+    position: absolute;
+    right: 0;
+}
+
+/* Иллюстрация: вписывается в ширину контейнера, выровнена по центру */
+.illustration {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Название произведения на первой странице — красным цветом */
+.work-title {
+    color: red;
+}
+
+/* Заголовок первой страницы произведения — с большим отступом сверху */
+h1 {
+    padding-top: 30vh;
+}
+
+/* Горизонтальная черта перед блоком сносок — короткая, прижата влево */
+.footnote-hr {
+    width: 25%;
+    text-align: left;
+    margin-left: 0;
+}
+
+/* Горизонтальная черта-разделитель внутри составного заголовка */
+.heading-hr {
+    width: 30%;
+    border: none;
+    border-top: 1px solid;
+    margin: 4px auto;
+}

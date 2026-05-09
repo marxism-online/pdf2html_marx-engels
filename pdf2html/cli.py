@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -110,7 +111,14 @@ def main() -> None:
         first_rendered = False
 
     print(file=sys.stderr)
-    Path(args.out).write_text("\n".join(parts) + "\n", encoding="utf-8")
+
+    out_path = Path(args.out)
+    css_src = Path(__file__).parent / "formatter" / "volume.css"
+    css_dst = out_path.with_suffix(".css")
+    shutil.copy(css_src, css_dst)
+
+    link_tag = f'<link rel="stylesheet" href="{css_dst.name}">'
+    out_path.write_text(link_tag + "\n" + "\n".join(parts) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
