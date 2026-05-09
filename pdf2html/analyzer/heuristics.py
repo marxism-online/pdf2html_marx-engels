@@ -239,10 +239,9 @@ def detect_signatures(
     sig_top_y = max(l.y1 for l in small_lines)
 
     if not left_lines or not right_lines:
-        only = left_lines or right_lines
         return SignatureBlock(
-            left=_group_sig_lines(only),
-            right=[],
+            left=_group_sig_lines(left_lines) if left_lines else [],
+            right=_group_sig_lines(right_lines) if right_lines else [],
         ), sig_top_y, star_para
 
     return SignatureBlock(
