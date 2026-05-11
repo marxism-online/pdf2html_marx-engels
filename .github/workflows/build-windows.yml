@@ -66,13 +66,13 @@ jobs:
 
       - name: Rename files with version
         run: |
-          mv dist/windows/pdf2html.exe "dist/windows/pdf2html-0.${{ github.run_number }}.exe"
-          mv dist/linux/pdf2html "dist/linux/pdf2html-linux-0.${{ github.run_number }}"
+          mv dist/windows/pdf2html.exe "dist/windows/pdf2html-build_0.${{ github.run_number }}.exe"
+          mv dist/linux/pdf2html "dist/linux/pdf2html-linux-build_0.${{ github.run_number }}"
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.${{ github.run_number }}
           name: v0.${{ github.run_number }}
           files: |
-            dist/windows/pdf2html-0.${{ github.run_number }}.exe
-            dist/linux/pdf2html-linux-0.${{ github.run_number }}
+            dist/windows/pdf2html-build_0.${{ github.run_number }}.exe
+            dist/linux/pdf2html-linux-build_0.${{ github.run_number }}
