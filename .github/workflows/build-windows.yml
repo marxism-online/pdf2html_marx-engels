@@ -64,14 +64,15 @@ jobs:
           name: pdf2html-linux
           path: dist/linux
 
-      - name: Create release tag
-        id: tag
-        run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+      - name: Rename files with build number
+        run: |
+          mv dist/windows/pdf2html.exe dist/windows/pdf2html-${{ github.run_number }}.exe
+          mv dist/linux/pdf2html dist/linux/pdf2html-linux-${{ github.run_number }}
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Build ${{ steps.tag.outputs.tag }}
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
           files: |
-            dist/windows/pdf2html.exe
-            dist/linux/pdf2html
+            dist/windows/pdf2html-${{ github.run_number }}.exe
+            dist/linux/pdf2html-linux-${{ github.run_number }}
