@@ -13,13 +13,13 @@
 
 **Windows:**
 ```
-pdf2html-build-N.exe volume08.pdf --out volume08.html
+pdf2html-build-N.exe volume08.pdf --out volume08.html --pages 1-100 --volume 8
 ```
 
 **Linux:**
 ```bash
 chmod +x pdf2html-build-N
-./pdf2html-build-N volume08.pdf --out volume08.html
+./pdf2html-build-N volume08.pdf --out volume08.html --pages 1-100 --volume 8
 ```
 
 ## Аргументы
