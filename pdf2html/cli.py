@@ -69,9 +69,9 @@ def main() -> None:
     volume = _parse_volume(args.pdf, args.volume)
     out_dir = Path(args.out).parent
 
-    print("Определение нумерации...", end=" ", file=sys.stderr)
+    print("Определение нумерации страниц...", end=" ", file=sys.stderr, flush=True)
     page_numbers = _prescan_page_numbers(args.pdf, selected_pages)
-    print("готово", file=sys.stderr)
+    print("готово", file=sys.stderr, flush=True)
 
     first_content_page = min(page_numbers) if page_numbers else None
 
