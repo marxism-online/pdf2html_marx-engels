@@ -19,12 +19,12 @@ jobs:
         run: pip install pdfminer.six Pillow Jinja2 pyinstaller
 
       - name: Build executable
-        run: pyinstaller pdf2html.spec
+        run: pyinstaller kmfe-pdf2html.spec
 
       - uses: actions/upload-artifact@v4
         with:
           name: pdf2html-windows
-          path: dist/pdf2html.exe
+          path: dist/kmfe-pdf2html.exe
           retention-days: 30
 
   build-linux:
@@ -40,12 +40,12 @@ jobs:
         run: pip install pdfminer.six Pillow Jinja2 pyinstaller
 
       - name: Build executable
-        run: pyinstaller pdf2html.spec
+        run: pyinstaller kmfe-pdf2html.spec
 
       - uses: actions/upload-artifact@v4
         with:
           name: pdf2html-linux
-          path: dist/pdf2html
+          path: dist/kmfe-pdf2html
           retention-days: 30
 
   release:
@@ -66,13 +66,13 @@ jobs:
 
       - name: Rename files with version
         run: |
-          mv dist/windows/pdf2html.exe "dist/windows/pdf2html-build_0.${{ github.run_number }}.exe"
-          mv dist/linux/pdf2html "dist/linux/pdf2html-linux-build_0.${{ github.run_number }}"
+          mv dist/windows/kmfe-pdf2html.exe "dist/windows/kmfe-pdf2html-build_0.${{ github.run_number }}.exe"
+          mv dist/linux/kmfe-pdf2html "dist/linux/kmfe-pdf2html-linux-build_0.${{ github.run_number }}"
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.${{ github.run_number }}
           name: v0.${{ github.run_number }}
           files: |
-            dist/windows/pdf2html-build_0.${{ github.run_number }}.exe
-            dist/linux/pdf2html-linux-build_0.${{ github.run_number }}
+            dist/windows/kmfe-pdf2html-build_0.${{ github.run_number }}.exe
+            dist/linux/kmfe-pdf2html-linux-build_0.${{ github.run_number }}

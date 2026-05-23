@@ -35,7 +35,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="pdf2html",
+    name="kmfe-pdf2html",
     debug=False,
     strip=False,
     upx=True,
