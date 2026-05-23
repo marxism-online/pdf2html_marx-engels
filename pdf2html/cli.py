@@ -75,6 +75,9 @@ def main() -> None:
 
     first_content_page = min(page_numbers) if page_numbers else None
 
+    last_known_pdf: int | None = None
+    last_known_book: int | None = None
+
     reader = PdfTextReader()
     analyzer = StructureAnalyzer()
     fmt = HtmlFormatter(page_numbers=page_numbers)
@@ -85,21 +88,28 @@ def main() -> None:
     first_rendered = True
 
     for page_no, layout in reader.iter_pages(args.pdf, selected_pages=selected_pages):
-        if first_content_page and page_no < first_content_page:
-            continue
         done += 1
         if total:
             pct = done * 100 // total
             print(f"\r[{done}/{total}] стр. {page_no} ({pct}%)", end="", file=sys.stderr)
         else:
             print(f"\rстр. {page_no}", end="", file=sys.stderr)
+        if first_content_page and page_no < first_content_page:
+            continue
 
         pm = analyzer.build_page_model(page_no, layout)
+
+        if page_no in page_numbers:
+            last_known_pdf = page_no
+            last_known_book = page_numbers[page_no]
 
         if pm.is_illustration:
             img_bytes = extract_illustration_image(layout)
             if img_bytes and volume is not None:
-                book_page = page_numbers.get(page_no, page_no)
+                if last_known_book is not None:
+                    book_page = last_known_book + (page_no - last_known_pdf)
+                else:
+                    book_page = page_no
                 img_name = f"{volume:02d}-{book_page}.jpg"
                 (out_dir / img_name).write_bytes(img_bytes)
                 pm.image_src = img_name
