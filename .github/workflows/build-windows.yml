@@ -2,7 +2,7 @@ name: Build executables
 
 on:
   push:
-    branches: [main, "agent/heuristics"]
+    branches: [main, "agent/heuristics", "feature/gui"]
   workflow_dispatch:
 
 jobs:
