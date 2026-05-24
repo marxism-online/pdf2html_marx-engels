@@ -16,15 +16,20 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pdfminer.six Pillow Jinja2 pyinstaller
+        run: pip install pdfminer.six Pillow Jinja2 pyinstaller customtkinter
 
-      - name: Build executable
+      - name: Build CLI executable
         run: pyinstaller kmfe-pdf2html.spec
+
+      - name: Build GUI executable
+        run: pyinstaller kmfe-pdf2html-gui.spec
 
       - uses: actions/upload-artifact@v4
         with:
           name: pdf2html-windows
-          path: dist/kmfe-pdf2html.exe
+          path: |
+            dist/kmfe-pdf2html.exe
+            dist/kmfe-pdf2html-gui.exe
           retention-days: 30
 
   build-linux:
@@ -37,15 +42,22 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pdfminer.six Pillow Jinja2 pyinstaller
+        run: |
+          sudo apt-get install -y python3-tk
+          pip install pdfminer.six Pillow Jinja2 pyinstaller customtkinter
 
-      - name: Build executable
+      - name: Build CLI executable
         run: pyinstaller kmfe-pdf2html.spec
+
+      - name: Build GUI executable
+        run: pyinstaller kmfe-pdf2html-gui.spec
 
       - uses: actions/upload-artifact@v4
         with:
           name: pdf2html-linux
-          path: dist/kmfe-pdf2html
+          path: |
+            dist/kmfe-pdf2html
+            dist/kmfe-pdf2html-gui
           retention-days: 30
 
   release:
@@ -66,13 +78,17 @@ jobs:
 
       - name: Rename files with version
         run: |
-          mv dist/windows/kmfe-pdf2html.exe "dist/windows/kmfe-pdf2html-build_0.${{ github.run_number }}.exe"
-          mv dist/linux/kmfe-pdf2html "dist/linux/kmfe-pdf2html-linux-build_0.${{ github.run_number }}"
+          mv dist/windows/kmfe-pdf2html.exe "dist/windows/kmfe-pdf2html-build_1.${{ github.run_number }}.exe"
+          mv dist/windows/kmfe-pdf2html-gui.exe "dist/windows/kmfe-pdf2html-gui-build_1.${{ github.run_number }}.exe"
+          mv dist/linux/kmfe-pdf2html "dist/linux/kmfe-pdf2html-linux-build_1.${{ github.run_number }}"
+          mv dist/linux/kmfe-pdf2html-gui "dist/linux/kmfe-pdf2html-gui-linux-build_1.${{ github.run_number }}"
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.${{ github.run_number }}
-          name: v0.${{ github.run_number }}
+          tag_name: v1.${{ github.run_number }}
+          name: v1.${{ github.run_number }}
           files: |
-            dist/windows/kmfe-pdf2html-build_0.${{ github.run_number }}.exe
-            dist/linux/kmfe-pdf2html-linux-build_0.${{ github.run_number }}
+            dist/windows/kmfe-pdf2html-build_1.${{ github.run_number }}.exe
+            dist/windows/kmfe-pdf2html-gui-build_1.${{ github.run_number }}.exe
+            dist/linux/kmfe-pdf2html-linux-build_1.${{ github.run_number }}
+            dist/linux/kmfe-pdf2html-gui-linux-build_1.${{ github.run_number }}
