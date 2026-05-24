@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "pdf2html Pager",
+  "version": "1.0",
+  "description": "Показывает HTML с метками <!--nextpage--> постранично",
+  "content_scripts": [
+    {
+      "matches": ["file://*.html", "file://**/*.html", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "css": ["style.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
