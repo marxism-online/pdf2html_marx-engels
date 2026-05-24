@@ -66,6 +66,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: pdf2html-windows
@@ -75,6 +77,11 @@ jobs:
         with:
           name: pdf2html-linux
           path: dist/linux
+
+      - name: Pack Chrome extension
+        run: |
+          cd chrome-extension
+          zip -r "../dist/pdf2html-pager-chrome-extension.zip" . -x "*.md"
 
       - name: Rename files with version
         run: |
@@ -92,3 +99,4 @@ jobs:
             dist/windows/kmfe-pdf2html-gui-build_1.${{ github.run_number }}.exe
             dist/linux/kmfe-pdf2html-linux-build_1.${{ github.run_number }}
             dist/linux/kmfe-pdf2html-gui-linux-build_1.${{ github.run_number }}
+            dist/pdf2html-pager-chrome-extension.zip
