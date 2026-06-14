@@ -72,11 +72,13 @@ def _line_is_red(line: TextLine) -> bool:
     return False
 
 
-def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None]:
-    """Return (headings, heading_body_threshold).
+def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None, list[Paragraph]]:
+    """Return (headings, heading_body_threshold, subtitle_paras).
 
     heading_body_threshold is the minimum y0 of detected heading lines.
     detect_paragraphs should skip lines with y0 >= this value.
+    subtitle_paras: small-font non-alphabetic lines (e.g. year ranges) that
+    were attached to the heading block but should render as centered paragraphs.
     """
     lines = sorted(
         [l for l in text_layer.lines if l.text.strip()],
@@ -89,16 +91,25 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
 
     heading_lines: list[TextLine] = []
-    orphan_sups: list[TextLine] = []
+    all_sup_textlines: list[TextLine] = []   # for heading_body_threshold
+    line_sups: dict[int, list[str]] = {}     # heading_line_index → inline sup texts
+    pending: list[tuple[TextLine, str]] = [] # digit-only lines not yet assigned
     # Center is established from the first heading line — not assumed to be the
     # page center. This handles title pages where the block sits right-of-center.
     expected_center: float | None = None
+
+    def _flush_pending(idx: int) -> None:
+        if pending:
+            line_sups[idx] = [s for _, s in pending]
+            all_sup_textlines.extend(tl for tl, _ in pending)
+            pending.clear()
+
     for line in lines[start:]:
         text = line.text.strip()
         if not any(c.isalpha() for c in text):
             if text.isdigit():
-                # Numeric-only lines (e.g. "286") become <sup> at the end.
-                orphan_sups.append(line)
+                # Digit-only line: defer to the next alphabetic heading line.
+                pending.append((line, text))
             else:
                 # Non-numeric decorators (e.g. "———") join the heading if centered.
                 if expected_center is not None:
@@ -113,6 +124,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
                 line_center = (line.x0 + line.x1) / 2
                 if abs(line_center - expected_center) <= _CENTERING_TOLERANCE:
                     heading_lines.append(line)
+                    _flush_pending(len(heading_lines) - 1)
                     continue
             break
         if _line_is_italic(line):
@@ -123,10 +135,14 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         elif abs(line_center - expected_center) > _CENTERING_TOLERANCE:
             break
         heading_lines.append(line)
+        _flush_pending(len(heading_lines) - 1)
+
+    # Digit-only lines that came after all heading text become trailing sups.
+    trailing_sup_texts = [s for _, s in pending]
+    all_sup_textlines.extend(tl for tl, _ in pending)
 
     if not heading_lines:
         return [], None, []
-
 
     main_size = heading_lines[0].avg_fontsize if heading_lines else None
 
@@ -143,7 +159,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     subtitle_lines = [l for l in heading_lines if _is_subtitle(l)]
     heading_text_lines = [l for l in heading_lines if not _is_subtitle(l)]
 
-    all_heading_lines = heading_lines + orphan_sups
+    all_heading_lines = heading_lines + all_sup_textlines
     heading_body_threshold = min(l.y0 for l in all_heading_lines)
 
     subtitle_paras: list[Paragraph] = []
@@ -179,13 +195,20 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
                 groups.append((bold, [line]))
         parts: list[str] = []
         for is_bold, group_lines in groups:
-            text = "<br>".join(l.text.strip() for l in group_lines)
+            line_strs: list[str] = []
+            for gl in group_lines:
+                lt = gl.text.strip()
+                idx = heading_lines.index(gl)
+                for s in line_sups.get(idx, []):
+                    lt += f"<sup>{s}</sup>"
+                line_strs.append(lt)
+            text = "<br>".join(line_strs)
             parts.append(f"<b>{text}</b>" if is_bold else text)
         rendered_segments.append("<br><br>".join(parts))
 
     combined = _HR.join(rendered_segments)
-    if orphan_sups:
-        combined += "".join(f"<sup>{l.text.strip()}</sup>" for l in orphan_sups)
+    if trailing_sup_texts:
+        combined += "".join(f"<sup>{s}</sup>" for s in trailing_sup_texts)
 
     level = 1 if _line_is_red(heading_text_lines[0]) else 2
     headings = [Heading(level=level, text=combined, align="CENTER")]
