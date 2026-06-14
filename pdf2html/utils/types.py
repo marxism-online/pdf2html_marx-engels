@@ -41,6 +41,7 @@ class PageModel:
     author: Optional[str] = None
     work_title: Optional[str] = None
     headings: List[Heading] = field(default_factory=list)
+    heading_blocks: list = field(default_factory=list)  # ordered List[Heading | Paragraph]
     blocks: List[Paragraph] = field(default_factory=list)
     footnote_block: Optional[Paragraph] = None
     has_bottom_hr: bool = False

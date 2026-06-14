@@ -9,6 +9,7 @@ from pdf2html.analyzer.heuristics import detect_quotes
 from pdf2html.analyzer.heuristics import detect_running_header
 from pdf2html.analyzer.heuristics import detect_signatures
 from pdf2html.analyzer.text_extractor import PdfTextExtractor
+from pdf2html.utils.types import Heading
 from pdf2html.utils.types import PageModel
 
 
@@ -22,7 +23,8 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         book_page_num = header[1] if header else None
 
-        headings, heading_body_threshold, subtitle_paras = detect_headings(text_layer)
+        heading_blocks, heading_body_threshold = detect_headings(text_layer)
+        headings = [item for item in heading_blocks if isinstance(item, Heading)]
 
         signature_block, sig_top_y, star_footnote = detect_signatures(
             text_layer, heading_body_threshold=heading_body_threshold
@@ -48,14 +50,12 @@ class StructureAnalyzer:
             if header and blocks:
                 blocks = blocks[1:]
 
-        if subtitle_paras:
-            blocks = subtitle_paras + blocks
-
         pm = PageModel(
             page_num=page_no,
             book_page_num=book_page_num,
             running_header=header,
             headings=headings,
+            heading_blocks=heading_blocks,
             blocks=blocks,
             footnote_block=footnote_block,
             has_bottom_hr=has_bottom_hr,

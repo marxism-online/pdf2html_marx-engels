@@ -85,7 +85,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         key=lambda l: -l.y0,
     )
     if not lines:
-        return [], None, []
+        return [], None
 
     # Skip running header (first line if it matches the header pattern)
     start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
@@ -142,13 +142,18 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     all_sup_textlines.extend(tl for tl, _ in pending)
 
     if not heading_lines:
-        return [], None, []
+        return [], None
 
     main_size = heading_lines[0].avg_fontsize if heading_lines else None
 
-    # Lines with much smaller font (e.g. year ranges) become centered paragraphs,
-    # not part of the heading HTML.
+    all_heading_lines = heading_lines + all_sup_textlines
+    heading_body_threshold = min(l.y0 for l in all_heading_lines)
+
+    _DASH_SEP_RE = re.compile(r'^[—–\-\s]+$')
+    _HR = '<hr class="heading-hr">'
+
     def _is_subtitle(line: TextLine) -> bool:
+        """Non-alphabetic line whose font is much smaller than the main heading."""
         return (
             main_size is not None
             and line.avg_fontsize is not None
@@ -156,64 +161,83 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
             and not any(c.isalpha() for c in line.text.strip())
         )
 
-    subtitle_lines = [l for l in heading_lines if _is_subtitle(l)]
-    heading_text_lines = [l for l in heading_lines if not _is_subtitle(l)]
-
-    all_heading_lines = heading_lines + all_sup_textlines
-    heading_body_threshold = min(l.y0 for l in all_heading_lines)
-
-    subtitle_paras: list[Paragraph] = []
-    for line in subtitle_lines:
-        inlines = _lines_to_inlines_br([line])
-        if inlines:
-            subtitle_paras.append(Paragraph(inlines=inlines, align="CENTER"))
-
-    if not heading_text_lines:
-        return [], heading_body_threshold, subtitle_paras
-
-    # Split heading lines at dash-only separator lines (e.g. "———").
-    # Each segment is rendered independently; segments are joined with <hr>.
-    _DASH_SEP_RE = re.compile(r'^[—–\-\s]+$')
-    _HR = '<hr class="heading-hr">'
-
-    segments: list[list[TextLine]] = [[]]
-    for line in heading_text_lines:
-        if _DASH_SEP_RE.match(line.text.strip()):
-            segments.append([])
-        else:
-            segments[-1].append(line)
-    segments = [s for s in segments if s]
-
-    rendered_segments: list[str] = []
-    for segment in segments:
-        groups: list[tuple[bool, list[TextLine]]] = []
-        for line in segment:
-            bold = _line_is_bold(line)
-            if groups and groups[-1][0] == bold:
-                groups[-1][1].append(line)
+    def _render_group(key: tuple[bool, str], group: list[TextLine]) -> Heading | Paragraph:
+        is_bold, size_cat = key
+        # Split on dash-separator lines; join rendered segments with <hr>.
+        segs: list[list[TextLine]] = [[]]
+        for gl in group:
+            if _DASH_SEP_RE.match(gl.text.strip()):
+                segs.append([])
             else:
-                groups.append((bold, [line]))
-        parts: list[str] = []
-        for is_bold, group_lines in groups:
+                segs[-1].append(gl)
+        segs = [s for s in segs if s]
+        seg_strs: list[str] = []
+        for seg in segs:
             line_strs: list[str] = []
-            for gl in group_lines:
+            for gl in seg:
                 lt = gl.text.strip()
-                idx = heading_lines.index(gl)
-                for s in line_sups.get(idx, []):
+                for s in line_sups.get(heading_lines.index(gl), []):
                     lt += f"<sup>{s}</sup>"
                 line_strs.append(lt)
-            text = "<br>".join(line_strs)
-            parts.append(f"<b>{text}</b>" if is_bold else text)
-        rendered_segments.append("<br><br>".join(parts))
+            seg_strs.append("<br>".join(line_strs))
+        text = _HR.join(seg_strs)
+        if is_bold:
+            text = f"<b>{text}</b>"
+            alpha_lines = [gl for gl in group if any(c.isalpha() for c in gl.text)]
+            level = 3 if size_cat == "sub" else (1 if (alpha_lines and _line_is_red(alpha_lines[0])) else 2)
+            return Heading(level=level, text=text, align="CENTER")
+        return Paragraph(inlines=[Inline(text=text)], align="CENTER")
 
-    combined = _HR.join(rendered_segments)
-    if trailing_sup_texts:
-        combined += "".join(f"<sup>{s}</sup>" for s in trailing_sup_texts)
+    heading_blocks: list = []
+    current_key: tuple[bool, str] | None = None
+    current_group: list[TextLine] = []
 
-    level = 1 if _line_is_red(heading_text_lines[0]) else 2
-    headings = [Heading(level=level, text=combined, align="CENTER")]
+    for line in heading_lines:
+        text = line.text.strip()
 
-    return headings, heading_body_threshold, subtitle_paras
+        if _is_subtitle(line):
+            if current_group:
+                heading_blocks.append(_render_group(current_key, current_group))
+                current_key, current_group = None, []
+            lt = text
+            for s in line_sups.get(heading_lines.index(line), []):
+                lt += f"<sup>{s}</sup>"
+            inlines = _lines_to_inlines_br([line]) or [Inline(text=lt)]
+            heading_blocks.append(Paragraph(inlines=inlines, align="CENTER"))
+            continue
+
+        is_alpha = any(c.isalpha() for c in text)
+        if not is_alpha:
+            if current_group:
+                current_group.append(line)
+            continue
+
+        is_bold = _line_is_bold(line)
+        size_cat = (
+            "main" if main_size is None or line.avg_fontsize is None
+            or line.avg_fontsize >= main_size * 0.9
+            else "sub"
+        )
+        key: tuple[bool, str] = (is_bold, size_cat)
+
+        if current_key is not None and current_key != key:
+            heading_blocks.append(_render_group(current_key, current_group))
+            current_group = []
+
+        current_key = key
+        current_group.append(line)
+
+    if current_group:
+        heading_blocks.append(_render_group(current_key, current_group))
+
+    if trailing_sup_texts and heading_blocks:
+        last = heading_blocks[-1]
+        if isinstance(last, Heading):
+            last.text += "".join(f"<sup>{s}</sup>" for s in trailing_sup_texts)
+        elif isinstance(last, Paragraph) and last.inlines:
+            last.inlines[-1].text += "".join(f"<sup>{s}</sup>" for s in trailing_sup_texts)
+
+    return heading_blocks, heading_body_threshold
 
 
 def detect_signatures(
