@@ -43,3 +43,9 @@ h1 {
     border-top: 1px solid;
     margin: 4px auto;
 }
+
+/* Подпись-лейбл в зоне заголовка: "(СТАТЬЯ ПЕРВАЯ)" и т.п. */
+.heading-label {
+    font-size: 1em;
+    margin: 0.4em 0;
+}

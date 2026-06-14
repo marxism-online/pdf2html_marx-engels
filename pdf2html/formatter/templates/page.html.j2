@@ -21,7 +21,7 @@
 {% if item.level is defined %}
 <h{{ item.level }} align="{{ item.align }}">{{ item.text | safe }}</h{{ item.level }}>
 {% else %}
-<p align="{{ item.align }}">{{ item | render_inlines }}</p>
+<p class="heading-label" align="{{ item.align }}">{{ item | render_inlines }}</p>
 {% endif %}
 {% endfor %}
 {% else %}
