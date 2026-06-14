@@ -22,7 +22,11 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         book_page_num = header[1] if header else None
 
-        signature_block, sig_top_y, star_footnote = detect_signatures(text_layer)
+        headings, heading_body_threshold = detect_headings(text_layer)
+
+        signature_block, sig_top_y, star_footnote = detect_signatures(
+            text_layer, heading_body_threshold=heading_body_threshold
+        )
 
         footnote_result = detect_footnote(text_layer, sig_top_y=sig_top_y)
         footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
@@ -33,8 +37,6 @@ class StructureAnalyzer:
 
         if body_min_y is None and sig_top_y is not None:
             body_min_y = sig_top_y
-
-        headings, heading_body_threshold = detect_headings(text_layer)
         if headings:
             blocks = detect_paragraphs(
                 text_layer,

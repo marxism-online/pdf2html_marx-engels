@@ -169,14 +169,18 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
 
 def detect_signatures(
     text_layer: PageTextLayer,
+    heading_body_threshold: float | None = None,
 ) -> tuple[SignatureBlock | None, float | None, Paragraph | None]:
     """Detect two-column article signatures at bottom of page.
 
     Returns (SignatureBlock, sig_top_y, star_footnote).
     star_footnote: editorial '*'-footnote found below the signature block, if any.
     sig_top_y is the y1 of the topmost signature line, used to limit footnote detection.
+    heading_body_threshold: lines at or above this y0 belong to the heading — skip them.
     """
     lines = [line for line in text_layer.lines if line.text.strip()]
+    if heading_body_threshold is not None:
+        lines = [l for l in lines if l.y0 < heading_body_threshold]
     if not lines:
         return None, None, None
 
