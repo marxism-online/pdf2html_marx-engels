@@ -125,7 +125,34 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         heading_lines.append(line)
 
     if not heading_lines:
-        return [], None
+        return [], None, []
+
+    main_size = heading_lines[0].avg_fontsize if heading_lines else None
+
+    # Lines with much smaller font (e.g. year ranges) become centered paragraphs,
+    # not part of the heading HTML.
+    def _is_subtitle(line: TextLine) -> bool:
+        return (
+            main_size is not None
+            and line.avg_fontsize is not None
+            and line.avg_fontsize < main_size * 0.75
+            and not any(c.isalpha() for c in line.text.strip())
+        )
+
+    subtitle_lines = [l for l in heading_lines if _is_subtitle(l)]
+    heading_text_lines = [l for l in heading_lines if not _is_subtitle(l)]
+
+    all_heading_lines = heading_lines + orphan_sups
+    heading_body_threshold = min(l.y0 for l in all_heading_lines)
+
+    subtitle_paras: list[Paragraph] = []
+    for line in subtitle_lines:
+        inlines = _lines_to_inlines_br([line])
+        if inlines:
+            subtitle_paras.append(Paragraph(inlines=inlines, align="CENTER"))
+
+    if not heading_text_lines:
+        return [], heading_body_threshold, subtitle_paras
 
     # Split heading lines at dash-only separator lines (e.g. "———").
     # Each segment is rendered independently; segments are joined with <hr>.
@@ -133,7 +160,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     _HR = '<hr class="heading-hr">'
 
     segments: list[list[TextLine]] = [[]]
-    for line in heading_lines:
+    for line in heading_text_lines:
         if _DASH_SEP_RE.match(line.text.strip()):
             segments.append([])
         else:
@@ -159,12 +186,10 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
     if orphan_sups:
         combined += "".join(f"<sup>{l.text.strip()}</sup>" for l in orphan_sups)
 
-    level = 1 if (heading_lines and _line_is_red(heading_lines[0])) else 2
+    level = 1 if _line_is_red(heading_text_lines[0]) else 2
     headings = [Heading(level=level, text=combined, align="CENTER")]
 
-    all_heading_lines = heading_lines + orphan_sups
-    heading_body_threshold = min(l.y0 for l in all_heading_lines)
-    return headings, heading_body_threshold
+    return headings, heading_body_threshold, subtitle_paras
 
 
 def detect_signatures(

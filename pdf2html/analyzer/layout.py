@@ -22,7 +22,7 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         book_page_num = header[1] if header else None
 
-        headings, heading_body_threshold = detect_headings(text_layer)
+        headings, heading_body_threshold, subtitle_paras = detect_headings(text_layer)
 
         signature_block, sig_top_y, star_footnote = detect_signatures(
             text_layer, heading_body_threshold=heading_body_threshold
@@ -47,6 +47,9 @@ class StructureAnalyzer:
             blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
             if header and blocks:
                 blocks = blocks[1:]
+
+        if subtitle_paras:
+            blocks = subtitle_paras + blocks
 
         pm = PageModel(
             page_num=page_no,
