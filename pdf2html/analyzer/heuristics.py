@@ -83,7 +83,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         key=lambda l: -l.y0,
     )
     if not lines:
-        return [], None
+        return [], None, []
 
     # Skip running header (first line if it matches the header pattern)
     start = 1 if (_RUNNING_HEADER_RE.match(lines[0].text) or _LONE_PAGE_NUM_RE.match(lines[0].text)) else 0
@@ -126,6 +126,7 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
 
     if not heading_lines:
         return [], None, []
+
 
     main_size = heading_lines[0].avg_fontsize if heading_lines else None
 
