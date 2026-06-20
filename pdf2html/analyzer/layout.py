@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pdfminer.layout import LTFigure
 
+from pdf2html.analyzer.heuristics import apply_quote_continuation
 from pdf2html.analyzer.heuristics import detect_footnote
 from pdf2html.analyzer.heuristics import detect_headings
 from pdf2html.analyzer.heuristics import detect_paragraphs
 from pdf2html.analyzer.heuristics import detect_quotes
 from pdf2html.analyzer.heuristics import detect_running_header
 from pdf2html.analyzer.heuristics import detect_signatures
+from pdf2html.analyzer.heuristics import quote_is_open_at_page_end
 from pdf2html.analyzer.text_extractor import PdfTextExtractor
 from pdf2html.utils.types import Heading
 from pdf2html.utils.types import PageModel
@@ -16,6 +18,7 @@ from pdf2html.utils.types import PageModel
 class StructureAnalyzer:
     def __init__(self) -> None:
         self.text_extractor = PdfTextExtractor()
+        self._prev_quote_open: bool = False
 
     def build_page_model(self, page_no: int, layout: object) -> PageModel:
         text_layer = self.text_extractor.extract_page_text_layer(page_no, layout)
@@ -63,6 +66,8 @@ class StructureAnalyzer:
         )
 
         detect_quotes(pm)
+        apply_quote_continuation(pm, self._prev_quote_open)
+        self._prev_quote_open = quote_is_open_at_page_end(pm)
 
         if any(isinstance(obj, LTFigure) for obj in layout):
             pm.is_illustration = True

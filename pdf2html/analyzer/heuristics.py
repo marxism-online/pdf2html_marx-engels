@@ -554,6 +554,43 @@ def detect_quotes(pm: PageModel) -> PageModel:
     return pm
 
 
+def _para_closes_quote(para: Paragraph) -> bool:
+    text = "".join(il.text for il in para.inlines)
+    return bool(_CLOSING_QUOTE_RE.search(text))
+
+
+def quote_is_open_at_page_end(pm: PageModel) -> bool:
+    """True if the page ends with a blockquote that has no closing guillemet."""
+    for p in reversed(pm.blocks):
+        if p.is_quote:
+            return not _para_closes_quote(p)
+    return False
+
+
+def apply_quote_continuation(pm: PageModel, prev_quote_open: bool) -> None:
+    """Mark leading paragraphs on this page as blockquote if the previous page
+    ended with an unclosed quote. Stops at the first paragraph that contains
+    an opening guillemet (new body text) or after the paragraph that closes
+    the quote. Does nothing if the page opens a new section (has headings)."""
+    if not prev_quote_open:
+        return
+    if pm.headings or pm.heading_blocks:
+        return
+    for p in pm.blocks:
+        if p.is_quote:
+            if _para_closes_quote(p):
+                return
+            continue
+        if p.align != "JUSTIFY":
+            return
+        text = "".join(il.text for il in p.inlines)
+        if _OPENING_QUOTE_RE.search(text):
+            return
+        p.is_quote = True
+        if _para_closes_quote(p):
+            return
+
+
 def _build_paragraph(
     lines: list[TextLine],
     body_fontsize: float | None = None,
