@@ -5,7 +5,7 @@
   "description": "Показывает HTML с метками <!--nextpage--> постранично",
   "content_scripts": [
     {
-      "matches": ["file://*.html", "file://**/*.html", "http://localhost/*", "http://127.0.0.1/*"],
+      "matches": ["file:///*", "http://localhost/*", "http://127.0.0.1/*"],
       "js": ["content.js"],
       "css": ["style.css"],
       "run_at": "document_idle"

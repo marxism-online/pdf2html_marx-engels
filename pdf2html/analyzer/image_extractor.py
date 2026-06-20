@@ -26,7 +26,7 @@ def _ltimage_to_jpeg(ltimage: LTImage) -> bytes | None:
 
     filt_str = str(attrs.get("Filter", ""))
     if "DCTDecode" in filt_str:
-        return ltimage.stream.rawdata
+        return ltimage.stream.get_data()
 
     data = ltimage.stream.get_data()
     row_bytes = math.ceil(w / 8)

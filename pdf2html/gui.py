@@ -43,8 +43,8 @@ class App(ctk.CTk):
         ctk.CTkEntry(row, textvariable=self._pdf_var, width=420).pack(side="left")
         ctk.CTkButton(row, text="Обзор", width=80, command=self._pick_pdf).pack(side="left", padx=(8, 0))
 
-        # Output
-        ctk.CTkLabel(self, text="Выходной HTML", anchor="w").pack(fill="x", **pad)
+        # Output folder
+        ctk.CTkLabel(self, text="Выходная папка", anchor="w").pack(fill="x", **pad)
         row2 = ctk.CTkFrame(self, fg_color="transparent")
         row2.pack(fill="x", padx=16, pady=(4, 0))
         self._out_var = ctk.StringVar()
@@ -97,13 +97,10 @@ class App(ctk.CTk):
         if path:
             self._pdf_var.set(path)
             if not self._out_var.get():
-                self._out_var.set(str(Path(path).with_suffix(".html")))
+                self._out_var.set(str(Path(path).parent))
 
     def _pick_out(self) -> None:
-        path = filedialog.asksaveasfilename(
-            defaultextension=".html",
-            filetypes=[("HTML files", "*.html")],
-        )
+        path = filedialog.askdirectory()
         if path:
             self._out_var.set(path)
 
@@ -114,7 +111,8 @@ class App(ctk.CTk):
             return
 
         pdf = self._pdf_var.get().strip()
-        out = self._out_var.get().strip()
+        out_dir = self._out_var.get().strip()
+        out = str(Path(out_dir) / Path(pdf).with_suffix(".html").name) if out_dir and pdf else ""
         page_from = self._page_from_var.get().strip()
         page_to = self._page_to_var.get().strip()
         vol_str = self._vol_var.get().strip()
@@ -122,8 +120,8 @@ class App(ctk.CTk):
         if not pdf:
             self._set_status("Выберите PDF файл.", error=True)
             return
-        if not out:
-            self._set_status("Укажите выходной файл.", error=True)
+        if not out_dir:
+            self._set_status("Укажите выходную папку.", error=True)
             return
 
         if page_from or page_to:
