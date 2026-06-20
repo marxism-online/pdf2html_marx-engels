@@ -466,6 +466,7 @@ def detect_paragraphs(
     text_layer: PageTextLayer,
     body_min_y: float | None = None,
     heading_body_threshold: float | None = None,
+    body_fontsize_ref: float | None = None,
 ) -> list[Paragraph]:
     # Compute body line bounds and median font size
     body_lines_all: list[TextLine] = []
@@ -481,6 +482,10 @@ def detect_paragraphs(
     # Use 75th percentile instead of median: a large inline quote block can
     # push the median down to the quote's font size, masking the real body size.
     body_median = sorted(body_sizes)[int(len(body_sizes) * 0.75)] if body_sizes else None
+    # If the page is dominated by small text (e.g. a cross-page quote continuation),
+    # the percentile is skewed. Fall back to the cross-page body size reference.
+    if body_fontsize_ref is not None and (body_median is None or body_median < body_fontsize_ref * 0.92):
+        body_median = body_fontsize_ref
     body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
     body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
@@ -569,24 +574,29 @@ def quote_is_open_at_page_end(pm: PageModel) -> bool:
 
 def apply_quote_continuation(pm: PageModel, prev_quote_open: bool) -> None:
     """Mark leading paragraphs on this page as blockquote if the previous page
-    ended with an unclosed quote. Stops at the first paragraph that contains
-    an opening guillemet (new body text) or after the paragraph that closes
-    the quote. Does nothing if the page opens a new section (has headings)."""
+    ended with an unclosed quote.
+
+    Must be called BEFORE detect_quotes so that is_small is still set.
+    Uses is_small as the primary signal: a small-font paragraph at the start of
+    a page following an open quote is a continuation. Stops at the first
+    non-small, non-quote paragraph (= body text). Does nothing when the page
+    opens a new section (has headings).
+    """
     if not prev_quote_open:
         return
     if pm.headings or pm.heading_blocks:
         return
     for p in pm.blocks:
         if p.is_quote:
+            # Already marked (e.g. is_quote_tail from a previous run) — keep going.
             if _para_closes_quote(p):
                 return
             continue
-        if p.align != "JUSTIFY":
-            return
-        text = "".join(il.text for il in p.inlines)
-        if _OPENING_QUOTE_RE.search(text):
+        if not p.is_small or p.align != "JUSTIFY":
+            # First non-small paragraph = body text boundary; stop.
             return
         p.is_quote = True
+        p.is_small = False
         if _para_closes_quote(p):
             return
 

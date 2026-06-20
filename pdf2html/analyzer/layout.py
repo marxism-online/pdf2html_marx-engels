@@ -19,12 +19,19 @@ class StructureAnalyzer:
     def __init__(self) -> None:
         self.text_extractor = PdfTextExtractor()
         self._prev_quote_open: bool = False
+        self._body_fontsize: float | None = None
 
     def build_page_model(self, page_no: int, layout: object) -> PageModel:
         text_layer = self.text_extractor.extract_page_text_layer(page_no, layout)
 
         header = detect_running_header(text_layer)
         book_page_num = header[1] if header else None
+
+        # Running header is always body text — use its font size as cross-page reference.
+        if header is not None:
+            first_line = next((l for l in text_layer.lines if l.text.strip()), None)
+            if first_line and first_line.avg_fontsize:
+                self._body_fontsize = first_line.avg_fontsize
 
         heading_blocks, heading_body_threshold = detect_headings(text_layer)
         headings = [item for item in heading_blocks if isinstance(item, Heading)]
@@ -47,9 +54,14 @@ class StructureAnalyzer:
                 text_layer,
                 body_min_y=body_min_y,
                 heading_body_threshold=heading_body_threshold,
+                body_fontsize_ref=self._body_fontsize,
             )
         else:
-            blocks = detect_paragraphs(text_layer, body_min_y=body_min_y)
+            blocks = detect_paragraphs(
+                text_layer,
+                body_min_y=body_min_y,
+                body_fontsize_ref=self._body_fontsize,
+            )
             if header and blocks:
                 blocks = blocks[1:]
 
@@ -65,8 +77,9 @@ class StructureAnalyzer:
             signature_block=signature_block,
         )
 
-        detect_quotes(pm)
+        # apply_quote_continuation must run before detect_quotes (uses raw is_small).
         apply_quote_continuation(pm, self._prev_quote_open)
+        detect_quotes(pm)
         self._prev_quote_open = quote_is_open_at_page_end(pm)
 
         if any(isinstance(obj, LTFigure) for obj in layout):
