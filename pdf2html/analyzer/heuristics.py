@@ -449,12 +449,12 @@ def _is_paragraph_break(
     vertical_gap = prev_line.y0 - line.y1
     if vertical_gap > max(prev_line.height, line.height) * 0.9:
         return True
-    if prev_line.x0 < body_x0 + 20.0:
+    if prev_line.x0 < body_x0 + 60.0:
         if line.x0 - prev_line.x0 > 6.0:
             return True
         if prev_line.x0 - line.x0 > 50.0:
             return True
-        if prev_line.x1 < body_x1 - 60.0 and line.x0 > body_x0 + 6.0:
+        if prev_line.x1 < body_x1 - 25.0 and line.x0 > body_x0 + 6.0:
             return True
     # Offset line (right-aligned date, signature) before a body-left line
     if prev_line.x0 > body_x0 + 50.0 and line.x0 < body_x0 + 20.0:
@@ -467,6 +467,7 @@ def detect_paragraphs(
     body_min_y: float | None = None,
     heading_body_threshold: float | None = None,
     body_fontsize_ref: float | None = None,
+    running_header_min_y: float | None = None,
 ) -> list[Paragraph]:
     # Compute body line bounds and median font size
     body_lines_all: list[TextLine] = []
@@ -475,6 +476,8 @@ def detect_paragraphs(
         if body_min_y is not None and line.y0 < body_min_y:
             continue
         if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
+            continue
+        if running_header_min_y is not None and line.y0 >= running_header_min_y:
             continue
         if line.text.strip():
             body_lines_all.append(line)
@@ -500,6 +503,8 @@ def detect_paragraphs(
         if body_min_y is not None and line.y0 < body_min_y:
             continue
         if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
+            continue
+        if running_header_min_y is not None and line.y0 >= running_header_min_y:
             continue
 
         if prev_line is None:
@@ -550,12 +555,11 @@ def _is_quote_tail(para: Paragraph) -> bool:
 
 def detect_quotes(pm: PageModel) -> PageModel:
     for p in pm.blocks:
-        if p.align == "JUSTIFY":
-            if p.is_small:
-                p.is_quote = True
-                p.is_small = False
-            elif _is_quote_tail(p):
-                p.is_quote = True
+        if p.is_small and p.align in ("JUSTIFY", "CENTER"):
+            p.is_quote = True
+            p.is_small = False
+        elif p.align == "JUSTIFY" and _is_quote_tail(p):
+            p.is_quote = True
     return pm
 
 
@@ -608,12 +612,24 @@ def _build_paragraph(
     body_x1: float = 0.0,
     page_width: float = 0.0,
 ) -> Paragraph | None:
-    # Detect alignment first — RIGHT paragraphs use <br> between lines
+    # Detect small font first — used in alignment heuristic below.
+    is_small = False
+    if body_fontsize is not None:
+        sizes = [s.fontsize for l in lines for s in l.spans if s.fontsize]
+        if sizes:
+            para_median = sorted(sizes)[len(sizes) // 2]
+            is_small = para_median < body_fontsize * 0.85
+
     para_x0 = min(l.x0 for l in lines)
     para_x1 = max(l.x1 for l in lines)
     left_indent = para_x0 - body_x0
     right_indent = body_x1 - para_x1
-    if left_indent > 30 and abs(left_indent - right_indent) <= 30:
+    # Verse/poetry lines vary in length, so their collective bounding box is
+    # wider than any single line and may push the measured asymmetry above the
+    # standard 30 pt tolerance.  Allow a wider tolerance for small-font blocks
+    # so that indented poem stanzas are correctly classified as CENTER.
+    center_tol = 50 if is_small else 30
+    if left_indent > 30 and abs(left_indent - right_indent) <= center_tol:
         align = "CENTER"
     elif page_width > 0 and para_x1 - para_x0 < page_width * 0.7:
         # Fallback: narrow paragraph centered on the page (title pages with no body reference)
@@ -632,14 +648,6 @@ def _build_paragraph(
     inlines = _lines_to_inlines_br(lines) if align in ("RIGHT", "CENTER") else _lines_to_inlines(lines)
     if not inlines or not any(i.text.strip() for i in inlines):
         return None
-
-    # Detect small font: paragraph median < 85% of body median
-    is_small = False
-    if body_fontsize is not None:
-        sizes = [s.fontsize for l in lines for s in l.spans if s.fontsize]
-        if sizes:
-            para_median = sorted(sizes)[len(sizes) // 2]
-            is_small = para_median < body_fontsize * 0.85
 
     return Paragraph(inlines=inlines, align=align, is_small=is_small)
 

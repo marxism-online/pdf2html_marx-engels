@@ -32,7 +32,7 @@
 {% for p in pm.blocks %}
 {% if p.is_quote %}
 <blockquote>
-<p align="JUSTIFY">{{ p | render_inlines }}</p>
+<p align="{{ p.align }}">{{ p | render_inlines }}</p>
 </blockquote>
 {% elif p.is_small %}
 <p align="{{ p.align }}"><small>{{ p | render_inlines }}</small></p>

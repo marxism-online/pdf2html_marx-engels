@@ -27,14 +27,32 @@ class StructureAnalyzer:
         header = detect_running_header(text_layer)
         book_page_num = header[1] if header else None
 
-        # Running header is always body text — use its font size as cross-page reference.
-        if header is not None:
-            first_line = next((l for l in text_layer.lines if l.text.strip()), None)
-            if first_line and first_line.avg_fontsize:
-                self._body_fontsize = first_line.avg_fontsize
+        running_header_min_y: float | None = None
+        if header:
+            visible = [l for l in text_layer.lines if l.text.strip()]
+            if visible:
+                running_header_min_y = visible[0].y0
 
         heading_blocks, heading_body_threshold = detect_headings(text_layer)
         headings = [item for item in heading_blocks if isinstance(item, Heading)]
+
+        # Track body font size across pages using the 75th percentile.
+        # Exclude heading and running-header areas so that large title fonts on cover
+        # pages do not inflate the reference and cause all body text to appear "small".
+        # Only update when the current page is body-dominated (percentile stays high);
+        # quote-heavy pages have a depressed percentile and must NOT pull the reference down.
+        page_sizes = sorted(
+            s.fontsize
+            for l in text_layer.lines
+            for s in l.spans
+            if s.fontsize
+            and (heading_body_threshold is None or l.y0 < heading_body_threshold)
+            and (running_header_min_y is None or l.y0 < running_header_min_y)
+        )
+        if page_sizes:
+            page_p75 = page_sizes[int(len(page_sizes) * 0.75)]
+            if self._body_fontsize is None or page_p75 > self._body_fontsize * 0.95:
+                self._body_fontsize = page_p75
 
         signature_block, sig_top_y, star_footnote = detect_signatures(
             text_layer, heading_body_threshold=heading_body_threshold
@@ -55,15 +73,15 @@ class StructureAnalyzer:
                 body_min_y=body_min_y,
                 heading_body_threshold=heading_body_threshold,
                 body_fontsize_ref=self._body_fontsize,
+                running_header_min_y=running_header_min_y,
             )
         else:
             blocks = detect_paragraphs(
                 text_layer,
                 body_min_y=body_min_y,
                 body_fontsize_ref=self._body_fontsize,
+                running_header_min_y=running_header_min_y,
             )
-            if header and blocks:
-                blocks = blocks[1:]
 
         pm = PageModel(
             page_num=page_no,
