@@ -18,6 +18,10 @@ jobs:
       - name: Install dependencies
         run: pip install pdfminer.six Pillow Jinja2 pyinstaller customtkinter
 
+      - name: Write version file
+        shell: bash
+        run: echo "__version__ = \"1.${{ github.run_number }}\"" > pdf2html/_version.py
+
       - name: Build CLI executable
         run: pyinstaller kmfe-pdf2html.spec
 
@@ -45,6 +49,9 @@ jobs:
         run: |
           sudo apt-get install -y python3-tk
           pip install pdfminer.six Pillow Jinja2 pyinstaller customtkinter
+
+      - name: Write version file
+        run: echo "__version__ = \"1.${{ github.run_number }}\"" > pdf2html/_version.py
 
       - name: Build CLI executable
         run: pyinstaller kmfe-pdf2html.spec

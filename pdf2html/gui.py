@@ -15,6 +15,7 @@ from .analyzer.heuristics import detect_running_header
 from .formatter.html_rules import HtmlFormatter
 from .reader.pdf_text import PdfTextReader
 from .utils.pagination import parse_pages_spec
+from ._version import __version__
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -89,6 +90,14 @@ class App(ctk.CTk):
         # Button
         self._btn = ctk.CTkButton(self, text="Конвертировать", command=self._on_convert)
         self._btn.pack(pady=16)
+
+        # Build number, drawn last so it stays on top of the widgets it overlaps
+        ctk.CTkLabel(
+            self,
+            text=f"build {__version__}",
+            font=("", 11),
+            text_color="gray",
+        ).place(relx=1.0, x=-8, y=6, anchor="ne")
 
     # ------------------------------------------------------------------ pickers
 
