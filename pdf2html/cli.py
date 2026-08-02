@@ -6,12 +6,10 @@ import shutil
 import sys
 from pathlib import Path
 
-from .analyzer.image_extractor import extract_illustration_image
-from .analyzer.layout import StructureAnalyzer
 from .analyzer.text_extractor import PdfTextExtractor
 from .analyzer.heuristics import detect_running_header
-from .formatter.html_rules import HtmlFormatter
 from .logging_setup import setup_logging
+from .pipeline import PageConverter
 from .reader.pdf_text import PdfTextReader
 from .utils.pagination import parse_pages_spec
 
@@ -75,17 +73,16 @@ def main() -> None:
 
     first_content_page = min(page_numbers) if page_numbers else None
 
-    last_known_pdf: int | None = None
-    last_known_book: int | None = None
-
     reader = PdfTextReader()
-    analyzer = StructureAnalyzer()
-    fmt = HtmlFormatter(page_numbers=page_numbers)
+    converter = PageConverter(
+        page_numbers=page_numbers,
+        first_content_page=first_content_page,
+        volume=volume,
+        out_dir=out_dir,
+    )
 
-    parts: list[str] = []
     total = len(selected_pages) if selected_pages else None
     done = 0
-    first_rendered = True
 
     for page_no, layout in reader.iter_pages(args.pdf, selected_pages=selected_pages):
         done += 1
@@ -94,32 +91,9 @@ def main() -> None:
             print(f"\r[{done}/{total}] стр. {page_no} ({pct}%)", end="", file=sys.stderr)
         else:
             print(f"\rстр. {page_no}", end="", file=sys.stderr)
-        if first_content_page and page_no < first_content_page:
-            continue
+        converter.feed(page_no, layout)
 
-        pm = analyzer.build_page_model(page_no, layout)
-
-        if page_no in page_numbers:
-            last_known_pdf = page_no
-            last_known_book = page_numbers[page_no]
-
-        if pm.is_illustration:
-            img_bytes = extract_illustration_image(layout)
-            if img_bytes and volume is not None:
-                if last_known_book is not None:
-                    book_page = last_known_book + (page_no - last_known_pdf)
-                else:
-                    book_page = page_no
-                img_name = f"{volume:02d}-{book_page}.jpg"
-                (out_dir / img_name).write_bytes(img_bytes)
-                pm.image_src = img_name
-
-        if page_no == 1:
-            parts.append(fmt.render_first_page(pm))
-        else:
-            parts.append(fmt.render_page(pm, first=first_rendered))
-        first_rendered = False
-
+    converter.finish()
     print(file=sys.stderr)
 
     out_path = Path(args.out)
@@ -128,7 +102,7 @@ def main() -> None:
     shutil.copy(css_src, css_dst)
 
     link_tag = f'<link rel="stylesheet" href="{css_dst.name}">'
-    out_path.write_text(link_tag + "\n" + "\n".join(parts) + "\n", encoding="utf-8")
+    out_path.write_text(link_tag + "\n" + "\n".join(converter.parts) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

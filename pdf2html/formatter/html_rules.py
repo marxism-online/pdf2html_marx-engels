@@ -38,3 +38,12 @@ class HtmlFormatter:
             anchor=self._resolve_anchor(pm),
             nextpage="" if first else "<!--nextpage-->",
         ).strip()
+
+    def render_illustration_fragment(self, pm: PageModel) -> str:
+        """Renders an illustration's image/caption without its own anchor or page break.
+
+        Used to fold an unnumbered plate insert into the end of the preceding page
+        instead of giving it its own pager slot (see is_insert_illustration).
+        """
+        tmpl = env.get_template("illustration_fragment.html.j2")
+        return tmpl.render(pm=pm).strip()

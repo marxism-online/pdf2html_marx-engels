@@ -48,3 +48,15 @@ class PageModel:
     signature_block: Optional[SignatureBlock] = None
     is_illustration: bool = False
     image_src: Optional[str] = None
+
+    @property
+    def is_blank(self) -> bool:
+        return (
+            not self.is_illustration
+            and not self.blocks
+            and not self.headings
+            and not self.heading_blocks
+            and not self.running_header
+            and not self.footnote_block
+            and not self.signature_block
+        )

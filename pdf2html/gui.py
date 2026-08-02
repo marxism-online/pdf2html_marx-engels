@@ -8,11 +8,7 @@ from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog
 
-from .analyzer.image_extractor import extract_illustration_image
-from .analyzer.layout import StructureAnalyzer
-from .analyzer.text_extractor import PdfTextExtractor
-from .analyzer.heuristics import detect_running_header
-from .formatter.html_rules import HtmlFormatter
+from .pipeline import PageConverter
 from .reader.pdf_text import PdfTextReader
 from .utils.pagination import parse_pages_spec
 from ._version import __version__
@@ -190,13 +186,12 @@ class App(ctk.CTk):
             first_content_page = min(page_numbers) if page_numbers else None
 
             reader = PdfTextReader()
-            analyzer = StructureAnalyzer()
-            fmt = HtmlFormatter(page_numbers=page_numbers)
-
-            parts: list[str] = []
-            last_known_pdf: int | None = None
-            last_known_book: int | None = None
-            first_rendered = True
+            converter = PageConverter(
+                page_numbers=page_numbers,
+                first_content_page=first_content_page,
+                volume=vol,
+                out_dir=out_dir,
+            )
 
             all_pages = list(reader.iter_pages(pdf, selected_pages=selected_pages))
             total = len(all_pages)
@@ -204,33 +199,9 @@ class App(ctk.CTk):
             for idx, (page_no, layout) in enumerate(all_pages, 1):
                 self._queue.put(f"PROGRESS:{idx}/{total}")
                 self._queue.put(f"STATUS:стр. {page_no} ({idx}/{total})")
+                converter.feed(page_no, layout)
 
-                if first_content_page and page_no < first_content_page:
-                    continue
-
-                pm = analyzer.build_page_model(page_no, layout)
-
-                if page_no in page_numbers:
-                    last_known_pdf = page_no
-                    last_known_book = page_numbers[page_no]
-
-                if pm.is_illustration:
-                    img_bytes = extract_illustration_image(layout)
-                    if img_bytes and vol is not None:
-                        book_page = (
-                            last_known_book + (page_no - last_known_pdf)
-                            if last_known_book is not None
-                            else page_no
-                        )
-                        img_name = f"{vol:02d}-{book_page}.jpg"
-                        (out_dir / img_name).write_bytes(img_bytes)
-                        pm.image_src = img_name
-
-                if page_no == 1:
-                    parts.append(fmt.render_first_page(pm))
-                else:
-                    parts.append(fmt.render_page(pm, first=first_rendered))
-                first_rendered = False
+            converter.finish()
 
             out_path = Path(out)
             css_src = Path(__file__).parent / "formatter" / "volume.css"
@@ -238,7 +209,7 @@ class App(ctk.CTk):
             shutil.copy(css_src, css_dst)
 
             link_tag = f'<link rel="stylesheet" href="{css_dst.name}">'
-            out_path.write_text(link_tag + "\n" + "\n".join(parts) + "\n", encoding="utf-8")
+            out_path.write_text(link_tag + "\n" + "\n".join(converter.parts) + "\n", encoding="utf-8")
 
             self._queue.put("STATUS:Готово!")
             self._queue.put("LOG:Сохранено: " + out)
