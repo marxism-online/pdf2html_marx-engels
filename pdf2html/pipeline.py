@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .analyzer.image_extractor import extract_illustration_image
 from .analyzer.layout import StructureAnalyzer
-from .analyzer.plate_inserts import is_insert_blank, is_insert_illustration
+from .analyzer.plate_inserts import is_unnumbered
 from .formatter.html_rules import HtmlFormatter
 from .utils.types import PageModel
 
@@ -12,13 +12,26 @@ from .utils.types import PageModel
 class PageConverter:
     """Builds PageModels for each PDF page in order and renders them to HTML parts.
 
-    Some plates are printed on an unnumbered inserted leaf: an illustration with no
-    printed page number, followed by a blank verso side also with no printed number.
-    Rendering each as its own page would give the leaf two pager slots it never had
-    in the book, permanently offsetting every later page's slot from its printed
-    number. Such a pair is folded into the end of the preceding numbered page instead -
-    the image gets no anchor or page break of its own, and the blank leaf is dropped.
-    See analyzer.plate_inserts for the detection rules.
+    Plates are sometimes printed without a visible page number. Two distinct things
+    can be going on when that happens, and they must be told apart:
+
+    1. The page still counts in the book's official pagination - it just doesn't show
+       its number (common for full-page illustrations). Once we reach the next page
+       with a known number, the numbers add up: last_known_book + pages_in_between
+       equals that known number exactly. Render each unnumbered page as its own page,
+       same as before - only its printed number is missing, not its place in line.
+
+    2. The page is a physically inserted leaf that was never counted at all (glued
+       between two consecutively-numbered pages). Here the numbers DON'T add up: the
+       next known page's number is smaller than naive counting would predict, by
+       exactly the number of unnumbered pages in between. Giving each of those pages
+       its own anchor would create pager slots the book never had, permanently
+       offsetting every later page. Instead they are folded into the end of the
+       preceding numbered page - an illustration keeps its image, a blank page
+       contributes nothing and disappears.
+
+    Runs of unnumbered pages are buffered until a page with a known number is reached,
+    at which point the deficit above decides which of the two cases applies.
     """
 
     def __init__(
@@ -40,7 +53,7 @@ class PageConverter:
         self._first_rendered = True
         self._last_known_pdf: int | None = None
         self._last_known_book: int | None = None
-        self._pending: tuple[int, object, PageModel] | None = None
+        self._buffer: list[tuple[int, object, PageModel]] = []
 
     def feed(self, page_no: int, layout: object) -> None:
         if self._first_content_page and page_no < self._first_content_page:
@@ -48,35 +61,42 @@ class PageConverter:
 
         pm = self._analyzer.build_page_model(page_no, layout)
 
-        # Resolve any pending illustration using last_known_* as of the page BEFORE
-        # this one - the current page's own number must not leak into that lookup.
-        if self._pending is not None:
-            p_page_no, p_layout, p_pm = self._pending
-            self._pending = None
-            if is_insert_blank(pm, page_no, self._page_numbers):
-                self._merge_insert(p_pm, p_layout)
-                return
-            self._emit_illustration(p_pm, p_layout, p_page_no)
-
-        if page_no in self._page_numbers:
-            self._last_known_pdf = page_no
-            self._last_known_book = self._page_numbers[page_no]
-
-        if is_insert_illustration(pm, page_no, self._page_numbers):
-            self._pending = (page_no, layout, pm)
+        if is_unnumbered(pm, page_no, self._page_numbers):
+            self._buffer.append((page_no, layout, pm))
             return
 
-        if pm.is_illustration:
-            pm.image_src = self._extract_image(layout, self._standalone_book_page(page_no))
+        known_book = self._page_numbers.get(page_no, pm.book_page_num)
+        self._resolve_buffer(page_no, known_book)
+        self._last_known_pdf = page_no
+        self._last_known_book = known_book
         self._render(pm, page_no)
 
     def finish(self) -> None:
-        if self._pending is not None:
-            page_no, layout, pm = self._pending
-            self._pending = None
-            self._emit_illustration(pm, layout, page_no)
+        # No later known page to compare against - render each buffered page on its own,
+        # same as if it had turned out not to be part of an uncounted insert.
+        for page_no, layout, pm in self._buffer:
+            self._render_standalone(pm, layout, page_no)
+        self._buffer = []
 
     # ------------------------------------------------------------------
+
+    def _resolve_buffer(self, next_page_no: int, next_book: int) -> None:
+        if not self._buffer:
+            return
+
+        deficit = 0
+        if self._last_known_book is not None:
+            naive_expected = self._last_known_book + (next_page_no - self._last_known_pdf)
+            deficit = naive_expected - next_book
+
+        if deficit == len(self._buffer):
+            for _, layout, pm in self._buffer:
+                self._merge_insert(pm, layout)
+        else:
+            for page_no, layout, pm in self._buffer:
+                self._render_standalone(pm, layout, page_no)
+
+        self._buffer = []
 
     def _extract_image(self, layout: object, book_page: int) -> str | None:
         if self._volume is None:
@@ -93,15 +113,17 @@ class PageConverter:
             return self._last_known_book + (page_no - self._last_known_pdf)
         return page_no
 
-    def _emit_illustration(self, pm: PageModel, layout: object, page_no: int) -> None:
-        pm.image_src = self._extract_image(layout, self._standalone_book_page(page_no))
+    def _render_standalone(self, pm: PageModel, layout: object, page_no: int) -> None:
+        if pm.is_illustration:
+            pm.image_src = self._extract_image(layout, self._standalone_book_page(page_no))
         self._render(pm, page_no)
 
     def _merge_insert(self, pm: PageModel, layout: object) -> None:
-        book_page = self._last_known_book if self._last_known_book is not None else pm.page_num
-        pm.image_src = self._extract_image(layout, book_page)
-        if self.parts:
-            self.parts[-1] += "\n" + self._fmt.render_illustration_fragment(pm)
+        if pm.is_illustration:
+            book_page = self._last_known_book if self._last_known_book is not None else pm.page_num
+            pm.image_src = self._extract_image(layout, book_page)
+            if self.parts:
+                self.parts[-1] += "\n" + self._fmt.render_illustration_fragment(pm)
 
     def _render(self, pm: PageModel, page_no: int) -> None:
         if page_no == 1:

@@ -4,15 +4,11 @@ from ..utils.types import PageModel
 
 
 def is_unnumbered(pm: PageModel, page_no: int, page_numbers: dict[int, int]) -> bool:
-    """True if this PDF page has no known printed page number (prescanned or detected)."""
+    """True if this PDF page has no known printed page number (prescanned or detected).
+
+    Plates are sometimes printed without a visible page number, either because the
+    number was omitted for that one page (it still counts in the book's pagination -
+    see PageConverter's deficit check) or because the inserted leaf was never counted
+    at all (a physical insert glued between two consecutively numbered pages).
+    """
     return page_no not in page_numbers and pm.book_page_num is None
-
-
-def is_insert_illustration(pm: PageModel, page_no: int, page_numbers: dict[int, int]) -> bool:
-    """An illustration page with no printed number - candidate for a plate insert leaf."""
-    return pm.is_illustration and is_unnumbered(pm, page_no, page_numbers)
-
-
-def is_insert_blank(pm: PageModel, page_no: int, page_numbers: dict[int, int]) -> bool:
-    """A blank page with no printed number - the verso side of a plate insert leaf."""
-    return pm.is_blank and is_unnumbered(pm, page_no, page_numbers)
