@@ -72,7 +72,10 @@ def _line_is_red(line: TextLine) -> bool:
     return False
 
 
-def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | None, list[Paragraph]]:
+def detect_headings(
+    text_layer: PageTextLayer,
+    body_fontsize_ref: float | None = None,
+) -> tuple[list[Heading], float | None, list[Paragraph]]:
     """Return (headings, heading_body_threshold, subtitle_paras).
 
     heading_body_threshold is the minimum y0 of detected heading lines.
@@ -145,6 +148,11 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
         return [], None
 
     main_size = heading_lines[0].avg_fontsize if heading_lines else None
+    # Tier reference for main/sub classification below: prefer the known cross-page
+    # body fontsize over the block's own first line. An isolated in-article subheading
+    # that happens to land at the top of a page (no full-size title above it) would
+    # otherwise be compared to itself and misclassified as a "main" (H2) title.
+    tier_ref = body_fontsize_ref if body_fontsize_ref is not None else main_size
 
     all_heading_lines = heading_lines + all_sup_textlines
     heading_body_threshold = min(l.y0 for l in all_heading_lines)
@@ -214,8 +222,8 @@ def detect_headings(text_layer: PageTextLayer) -> tuple[list[Heading], float | N
 
         is_bold = _line_is_bold(line)
         size_cat = (
-            "main" if main_size is None or line.avg_fontsize is None
-            or line.avg_fontsize >= main_size * 0.9
+            "main" if tier_ref is None or line.avg_fontsize is None
+            or line.avg_fontsize >= tier_ref * 0.9
             else "sub"
         )
         key: tuple[bool, str] = (is_bold, size_cat)
@@ -553,9 +561,26 @@ def _is_quote_tail(para: Paragraph) -> bool:
     return bool(_CLOSING_QUOTE_RE.search(text)) and not bool(_OPENING_QUOTE_RE.search(text))
 
 
+def _is_heading_like_paragraph(p: Paragraph) -> bool:
+    """Bold, centered, ALL-CAPS paragraph — an in-article subheading (e.g. a
+    section title inside a longer article) that landed in the regular body flow
+    instead of the page-top heading area. Rendered as <h3>, not as a quote/paragraph.
+    """
+    if p.align != "CENTER" or not p.inlines:
+        return False
+    if not all(i.bold for i in p.inlines):
+        return False
+    text = "".join(i.text for i in p.inlines)
+    text = re.sub(r'<[^>]+>', ' ', text)  # strip embedded <br> etc. before the caps check
+    return _is_all_caps_line(text)
+
+
 def detect_quotes(pm: PageModel) -> PageModel:
     for p in pm.blocks:
-        if p.is_small and p.align in ("JUSTIFY", "CENTER"):
+        if _is_heading_like_paragraph(p):
+            p.heading_level = 3
+            p.is_small = False
+        elif p.is_small and p.align in ("JUSTIFY", "CENTER"):
             p.is_quote = True
             p.is_small = False
         elif p.align == "JUSTIFY" and _is_quote_tail(p):

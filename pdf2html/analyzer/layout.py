@@ -33,7 +33,9 @@ class StructureAnalyzer:
             if visible:
                 running_header_min_y = visible[0].y0
 
-        heading_blocks, heading_body_threshold = detect_headings(text_layer)
+        heading_blocks, heading_body_threshold = detect_headings(
+            text_layer, body_fontsize_ref=self._body_fontsize
+        )
         headings = [item for item in heading_blocks if isinstance(item, Heading)]
 
         # Track body font size across pages using the 75th percentile.

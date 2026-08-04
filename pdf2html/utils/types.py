@@ -20,6 +20,7 @@ class Paragraph:
     is_quote: bool = False
     is_q_inline: bool = False
     is_small: bool = False
+    heading_level: Optional[int] = None
 
 @dataclass
 class Heading:

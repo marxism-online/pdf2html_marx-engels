@@ -27,7 +27,9 @@
 {% endfor %}
 {% endif %}
 {% for p in pm.blocks %}
-{% if p.is_quote %}
+{% if p.heading_level %}
+<h{{ p.heading_level }} align="{{ p.align }}">{{ p | render_inlines }}</h{{ p.heading_level }}>
+{% elif p.is_quote %}
 <blockquote>
 <p align="{{ p.align }}">{{ p | render_inlines }}</p>
 </blockquote>
