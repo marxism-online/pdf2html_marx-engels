@@ -99,7 +99,7 @@ class StructureAnalyzer:
 
         # apply_quote_continuation must run before detect_quotes (uses raw is_small).
         apply_quote_continuation(pm, self._prev_quote_open)
-        detect_quotes(pm)
+        detect_quotes(pm, prev_quote_open=self._prev_quote_open)
         self._prev_quote_open = quote_is_open_at_page_end(pm)
 
         if any(isinstance(obj, LTFigure) for obj in layout):

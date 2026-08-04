@@ -42,11 +42,22 @@ class TestDetectQuotes:
         assert pm.blocks[0].is_quote is False
 
     def test_cross_page_quote_tail(self):
-        # Продолжение цитаты с предыдущей страницы: нет «, но есть закрывающее »
+        # Продолжение реального blockquote с предыдущей страницы: нет «, но
+        # есть закрывающее », и предыдущая страница закончилась внутри цитаты.
         p = _para("пор, пока народ не убедится в необходимости небольшой народной партии в парламенте».")
         pm = PageModel(page_num=1, blocks=[p])
-        detect_quotes(pm)
+        detect_quotes(pm, prev_quote_open=True)
         assert pm.blocks[0].is_quote is True
+
+    def test_stray_closing_guillemet_without_open_quote_not_promoted(self):
+        # Автор сам обрывает предложение с открывающей « в конце обычного
+        # (не-blockquote) абзаца перед разрывом страницы; продолжение на
+        # следующей странице не должно стать blockquote, если реальной
+        # цитаты на предыдущей странице не было.
+        p = _para("их имманентная цель, и оно имеет свою силу в том, что индивиды имеют права».")
+        pm = PageModel(page_num=1, blocks=[p])
+        detect_quotes(pm, prev_quote_open=False)
+        assert pm.blocks[0].is_quote is False
 
     def test_inline_closing_quote_not_tail(self):
         # Закрывающее » есть, но и открывающее « тоже — не хвост, обычный абзац

@@ -575,21 +575,36 @@ def _is_heading_like_paragraph(p: Paragraph) -> bool:
     return _is_all_caps_line(text)
 
 
-def detect_quotes(pm: PageModel) -> PageModel:
-    for p in pm.blocks:
+def detect_quotes(pm: PageModel, prev_quote_open: bool = False) -> PageModel:
+    """prev_quote_open: True if the previous page ended inside an actual
+    <blockquote> left unclosed (see quote_is_open_at_page_end). Without this,
+    a normal paragraph that merely closes with a stray » (e.g. Marx re-quoting
+    a clause inline, cut by a page break, with no blockquote on either side)
+    would be wrongly promoted to <blockquote> just because it lacks a local «.
+    """
+    for i, p in enumerate(pm.blocks):
         if _is_heading_like_paragraph(p):
             p.heading_level = 3
             p.is_small = False
         elif p.is_small and p.align in ("JUSTIFY", "CENTER"):
             p.is_quote = True
             p.is_small = False
-        elif p.align == "JUSTIFY" and _is_quote_tail(p):
+        elif i == 0 and prev_quote_open and p.align == "JUSTIFY" and _is_quote_tail(p):
             p.is_quote = True
     return pm
 
 
 def _para_closes_quote(para: Paragraph) -> bool:
+    """True if the paragraph's quotation is closed by its end.
+
+    Looks at the LAST « or » in the whole paragraph rather than requiring »
+    to be the final character: trailing editorial text after the closing
+    guillemet (e.g. '...целому» и т. д.') is common and doesn't reopen the quote.
+    """
     text = "".join(il.text for il in para.inlines)
+    marks = re.findall(r'[«»]', text)
+    if marks:
+        return marks[-1] == '»'
     return bool(_CLOSING_QUOTE_RE.search(text))
 
 
