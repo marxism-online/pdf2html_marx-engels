@@ -34,8 +34,13 @@ class StructureAnalyzer:
             if visible:
                 running_header_min_y = visible[0].y0
 
+        # Snapshot the cross-page reference before this page can update it below —
+        # detect_headings/detect_opening_signature must judge this page's own font
+        # sizes against what came BEFORE it, not against themselves.
+        body_fontsize_ref = self._body_fontsize
+
         heading_blocks, heading_body_threshold = detect_headings(
-            text_layer, body_fontsize_ref=self._body_fontsize
+            text_layer, body_fontsize_ref=body_fontsize_ref
         )
         headings = [item for item in heading_blocks if isinstance(item, Heading)]
 
@@ -75,7 +80,7 @@ class StructureAnalyzer:
         # "Написано .../Печатается по ..." two-column note) renders as its own
         # block, not the regular paragraph flow — see detect_opening_signature.
         opening_signature = (
-            detect_opening_signature(text_layer, heading_body_threshold, body_fontsize_ref=self._body_fontsize)
+            detect_opening_signature(text_layer, heading_body_threshold, body_fontsize_ref=body_fontsize_ref)
             if headings else None
         )
 
