@@ -5,6 +5,7 @@ from pdfminer.layout import LTFigure
 from pdf2html.analyzer.heuristics import apply_quote_continuation
 from pdf2html.analyzer.heuristics import detect_footnote
 from pdf2html.analyzer.heuristics import detect_headings
+from pdf2html.analyzer.heuristics import detect_opening_signature
 from pdf2html.analyzer.heuristics import detect_paragraphs
 from pdf2html.analyzer.heuristics import detect_quotes
 from pdf2html.analyzer.heuristics import detect_running_header
@@ -69,7 +70,18 @@ class StructureAnalyzer:
 
         if body_min_y is None and sig_top_y is not None:
             body_min_y = sig_top_y
-        if headings:
+
+        # A work-opening title page (heading followed only by a small italic
+        # "Написано .../Печатается по ..." two-column note) renders as its own
+        # block, not the regular paragraph flow — see detect_opening_signature.
+        opening_signature = (
+            detect_opening_signature(text_layer, heading_body_threshold, body_fontsize_ref=self._body_fontsize)
+            if headings else None
+        )
+
+        if opening_signature is not None:
+            blocks = []
+        elif headings:
             blocks = detect_paragraphs(
                 text_layer,
                 body_min_y=body_min_y,
@@ -95,6 +107,7 @@ class StructureAnalyzer:
             footnote_block=footnote_block,
             has_bottom_hr=has_bottom_hr,
             signature_block=signature_block,
+            opening_signature=opening_signature,
         )
 
         # apply_quote_continuation must run before detect_quotes (uses raw is_small).

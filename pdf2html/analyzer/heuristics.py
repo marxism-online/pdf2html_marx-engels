@@ -147,6 +147,14 @@ def detect_headings(
     if not heading_lines:
         return [], None
 
+    # Some title pages typeset the heading block noticeably right of the true
+    # page center (binding-margin quirk in the source PDF). Flag it so the
+    # template can nudge it right instead of dead-centering it like the rest.
+    offset_right = (
+        expected_center is not None
+        and (expected_center - text_layer.width / 2) > _CENTERING_TOLERANCE * 2
+    )
+
     main_size = heading_lines[0].avg_fontsize if heading_lines else None
     # Tier reference for main/sub classification below: prefer the known cross-page
     # body fontsize over the block's own first line. An isolated in-article subheading
@@ -193,7 +201,7 @@ def detect_headings(
             text = f"<b>{text}</b>"
             alpha_lines = [gl for gl in group if any(c.isalpha() for c in gl.text)]
             level = 3 if size_cat == "sub" else (1 if (alpha_lines and _line_is_red(alpha_lines[0])) else 2)
-            return Heading(level=level, text=text, align="CENTER")
+            return Heading(level=level, text=text, align="CENTER", offset_right=offset_right)
         return Paragraph(inlines=[Inline(text=text)], align="CENTER")
 
     heading_blocks: list = []
@@ -333,6 +341,44 @@ def detect_signatures(
         left=_group_sig_lines(left_lines),
         right=_group_sig_lines(right_lines),
     ), sig_top_y, star_para
+
+
+def detect_opening_signature(
+    text_layer: PageTextLayer,
+    heading_body_threshold: float | None,
+    body_fontsize_ref: float | None = None,
+) -> SignatureBlock | None:
+    """Detect the small italic two-column dedication block that opens a major
+    work right under its title (e.g. "Написано К. Марксом летом 1843 г." /
+    "Печатается по рукописи"), typeset with a large blank gap below the
+    heading and nothing else on the page. Mirrors detect_signatures' left/right
+    column split, but for the top of a page instead of the bottom.
+
+    Italic alone isn't enough: some short works (e.g. "ЗАЯВЛЕНИЕ") set their
+    entire body text in italic at normal body size. Also require the lines to
+    be small relative to body_fontsize_ref, matching the actual dedication
+    block's font (~9pt vs ~12pt body) and excluding italicized body text.
+    """
+    if heading_body_threshold is None:
+        return None
+    lines = [l for l in text_layer.lines if l.text.strip() and l.y0 < heading_body_threshold]
+    if len(lines) < 2 or not all(_line_is_italic(l) for l in lines):
+        return None
+    if body_fontsize_ref is not None:
+        small_threshold = body_fontsize_ref * 0.85
+        if not all(l.avg_fontsize is not None and l.avg_fontsize <= small_threshold for l in lines):
+            return None
+
+    page_center = text_layer.width / 2
+    left_lines = [l for l in lines if (l.x0 + l.x1) / 2 < page_center]
+    right_lines = [l for l in lines if (l.x0 + l.x1) / 2 >= page_center]
+    if not left_lines and not right_lines:
+        return None
+
+    return SignatureBlock(
+        left=_group_sig_lines(left_lines) if left_lines else [],
+        right=_group_sig_lines(right_lines) if right_lines else [],
+    )
 
 
 def _group_sig_lines(lines: list[TextLine]) -> list[Paragraph]:

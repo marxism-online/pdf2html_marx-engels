@@ -16,15 +16,25 @@
 {% if pm.heading_blocks %}
 {% for item in pm.heading_blocks %}
 {% if item.level is defined %}
-<h{{ item.level }} align="{{ item.align }}">{{ item.text | safe }}</h{{ item.level }}>
+<h{{ item.level }} align="{{ item.align }}"{% if item.offset_right %} class="heading-shift-right"{% endif %}>{{ item.text | safe }}</h{{ item.level }}>
 {% else %}
 <p class="heading-label" align="{{ item.align }}">{{ item | render_inlines }}</p>
 {% endif %}
 {% endfor %}
 {% else %}
 {% for h in pm.headings %}
-<h{{ h.level }} align="{{ h.align }}">{{ h.text | safe }}</h{{ h.level }}>
+<h{{ h.level }} align="{{ h.align }}"{% if h.offset_right %} class="heading-shift-right"{% endif %}>{{ h.text | safe }}</h{{ h.level }}>
 {% endfor %}
+{% endif %}
+{% if pm.opening_signature %}
+<p>&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;&nbsp;<br>&nbsp;</p>
+<table width="96%">
+<tbody><tr>
+<td align="CENTER" width="45%"><small>{% for p in pm.opening_signature.left %}{{ p | render_inlines }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</small></td>
+<td> </td>
+<td align="CENTER" valign="TOP" width="45%"><small>{% for p in pm.opening_signature.right %}{{ p | render_inlines }}{% if not loop.last %}<br><br>{% endif %}{% endfor %}</small></td>
+</tr></tbody>
+</table>
 {% endif %}
 {% for p in pm.blocks %}
 {% if p.heading_level %}

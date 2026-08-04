@@ -28,6 +28,7 @@ class Heading:
     text: str
     align: Align = "CENTER"
     bold: bool = False
+    offset_right: bool = False
 
 @dataclass
 class SignatureBlock:
@@ -47,6 +48,7 @@ class PageModel:
     footnote_block: Optional[Paragraph] = None
     has_bottom_hr: bool = False
     signature_block: Optional[SignatureBlock] = None
+    opening_signature: Optional[SignatureBlock] = None
     is_illustration: bool = False
     image_src: Optional[str] = None
 
@@ -60,4 +62,5 @@ class PageModel:
             and not self.running_header
             and not self.footnote_block
             and not self.signature_block
+            and not self.opening_signature
         )
