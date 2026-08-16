@@ -616,12 +616,15 @@ def _is_heading_like_paragraph(p: Paragraph) -> bool:
     """Bold, centered, ALL-CAPS paragraph — an in-article subheading (e.g. a
     section title inside a longer article) that landed in the regular body flow
     instead of the page-top heading area. Rendered as <h3>, not as a quote/paragraph.
+
+    A trailing <sup> footnote-reference number (folded on by
+    _fold_footnote_ref_lines) doesn't have to be bold itself.
     """
     if p.align != "CENTER" or not p.inlines:
         return False
-    if not all(i.bold for i in p.inlines):
+    if not all(i.bold or i.sup for i in p.inlines):
         return False
-    text = "".join(i.text for i in p.inlines)
+    text = "".join(i.text for i in p.inlines if not i.sup)
     text = re.sub(r'<[^>]+>', ' ', text)  # strip embedded <br> etc. before the caps check
     return _is_all_caps_line(text)
 
@@ -696,6 +699,50 @@ def apply_quote_continuation(pm: PageModel, prev_quote_open: bool) -> None:
             return
 
 
+def _fold_footnote_ref_lines(lines: list[TextLine]) -> list[TextLine]:
+    """Fold a standalone small digit-only line into the next (bold) line as a
+    trailing superscript, when it's really a footnote-reference number attached
+    to that line — e.g. an in-article heading like "ГЛАВА О БРАКЕ 39".
+
+    Its raised baseline makes pdfminer split it into its own TextLine, which
+    then reads (top-to-bottom) *before* the line it visually follows. Only
+    folds when the digit line is small, horizontally flush against the next
+    line, and vertically overlaps it — the geometric signature of a footnote
+    marker, not an unrelated standalone number.
+    """
+    if len(lines) < 2:
+        return lines
+
+    result: list[TextLine] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        text = line.text.strip()
+        if i + 1 < len(lines) and text.isdigit() and len(text) <= 3:
+            nxt = lines[i + 1]
+            overlap = min(line.y1, nxt.y1) - max(line.y0, nxt.y0)
+            gap = line.x0 - nxt.x1
+            if (
+                overlap > 0
+                and -1.0 <= gap <= 6.0
+                and line.avg_fontsize and nxt.avg_fontsize
+                and line.avg_fontsize < nxt.avg_fontsize * 0.85
+                and _line_is_bold(nxt)
+            ):
+                result.append(TextLine(
+                    spans=nxt.spans + line.spans,
+                    x0=nxt.x0,
+                    y0=nxt.y0,
+                    x1=line.x1,
+                    y1=max(nxt.y1, line.y1),
+                ))
+                i += 2
+                continue
+        result.append(line)
+        i += 1
+    return result
+
+
 def _build_paragraph(
     lines: list[TextLine],
     body_fontsize: float | None = None,
@@ -703,6 +750,8 @@ def _build_paragraph(
     body_x1: float = 0.0,
     page_width: float = 0.0,
 ) -> Paragraph | None:
+    lines = _fold_footnote_ref_lines(lines)
+
     # Detect small font first — used in alignment heuristic below.
     is_small = False
     if body_fontsize is not None:
