@@ -9,6 +9,51 @@ from pdf2html.utils.text_layer import TextBlock
 from pdf2html.utils.text_layer import TextLine
 from pdf2html.utils.text_layer import TextSpan
 
+# Some embedded font subsets in this book map footnote-marker glyphs to
+# Private Use Area codepoints instead of real Unicode characters, so pdfminer
+# extracts them as unrenderable placeholders (browser tofu boxes) instead of
+# the intended punctuation. Known cases, keyed by the extracted codepoint:
+#   U+F02A — AHPFGN+TimesNewRomanPSMT footnote-marker asterisk. The source
+#   PDF draws it twice at the identical position for a bold "**"; mapping
+#   each occurrence to a plain "*" lets the two draws concatenate back into
+#   the intended "**" with no extra dedup logic needed.
+_GLYPH_FIXUPS = {
+    "": "*",
+}
+
+
+def _fixup_char_text(text: str) -> str:
+    return _GLYPH_FIXUPS.get(text, text)
+
+
+def _merge_split_lines(lines: list[TextLine]) -> list[TextLine]:
+    """Merge consecutive LTTextLine objects that pdfminer split apart even
+    though they're really the same physical line — seen with zero-advance-width
+    glyphs (e.g. the PUA footnote-marker glyphs above), which can confuse
+    pdfminer's line clustering. Only merges lines on the same baseline whose
+    x-ranges touch with virtually no gap; genuine same-row content (two-column
+    signature blocks, etc.) sits far enough apart in x to be unaffected.
+    """
+    if not lines:
+        return lines
+
+    merged: list[TextLine] = [lines[0]]
+    for line in lines[1:]:
+        prev = merged[-1]
+        same_row = abs(line.y0 - prev.y0) < 1.0 and abs(line.y1 - prev.y1) < 1.0
+        gap = line.x0 - prev.x1
+        if same_row and -1.0 <= gap <= 1.5:
+            merged[-1] = TextLine(
+                spans=prev.spans + line.spans,
+                x0=prev.x0,
+                y0=min(prev.y0, line.y0),
+                x1=line.x1,
+                y1=max(prev.y1, line.y1),
+            )
+        else:
+            merged.append(line)
+    return merged
+
 
 class PdfTextExtractor:
     def extract_page_text_layer(self, page_no: int, layout: object) -> PageTextLayer:
@@ -27,11 +72,26 @@ class PdfTextExtractor:
 
         blocks.sort(key=lambda b: (-b.y1, b.x0))
 
+        # A split line's two halves can end up in two different LTTextContainer
+        # blocks (pdfminer's own clustering, not just within one block's lines),
+        # so the merge has to run on the page's full flattened, reading-order
+        # line sequence rather than per block. Nothing downstream reads
+        # block-level geometry (only the flattened .lines), so collapsing to a
+        # single page-level block after merging is safe.
+        all_lines = _merge_split_lines([line for block in blocks for line in block.lines])
+        merged_block = TextBlock(
+            lines=all_lines,
+            x0=min((l.x0 for l in all_lines), default=0.0),
+            y0=min((l.y0 for l in all_lines), default=0.0),
+            x1=max((l.x1 for l in all_lines), default=0.0),
+            y1=max((l.y1 for l in all_lines), default=0.0),
+        )
+
         return PageTextLayer(
             page_no=page_no,
             width=width,
             height=height,
-            blocks=blocks,
+            blocks=[merged_block] if all_lines else [],
         )
 
     def _extract_block(self, obj: LTTextContainer) -> TextBlock:
@@ -114,7 +174,7 @@ class PdfTextExtractor:
                 ):
                     flush_span()
 
-                current_text.append(elem.get_text())
+                current_text.append(_fixup_char_text(elem.get_text()))
                 current_chars.append(elem)
 
                 if current_fontname is None:
