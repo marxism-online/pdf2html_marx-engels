@@ -36,6 +36,16 @@ class SignatureBlock:
     right: List[Paragraph]
 
 @dataclass
+class TwoColumnBlock:
+    """A body-flow passage genuinely typeset in two columns (e.g. Marx quoting
+    a source paragraph on the left, his own numbered breakdown of it on the
+    right) — as opposed to SignatureBlock, which is a fixed page-top/bottom
+    slot, this sits inline wherever detect_paragraphs finds it in the text.
+    """
+    left: List[Paragraph]
+    right: List[Paragraph]
+
+@dataclass
 class PageModel:
     page_num: int
     book_page_num: Optional[int] = None
@@ -44,7 +54,7 @@ class PageModel:
     work_title: Optional[str] = None
     headings: List[Heading] = field(default_factory=list)
     heading_blocks: list = field(default_factory=list)  # ordered List[Heading | Paragraph]
-    blocks: List[Paragraph] = field(default_factory=list)
+    blocks: list = field(default_factory=list)  # ordered List[Paragraph | TwoColumnBlock]
     footnote_blocks: List[Paragraph] = field(default_factory=list)
     has_bottom_hr: bool = False
     signature_block: Optional[SignatureBlock] = None

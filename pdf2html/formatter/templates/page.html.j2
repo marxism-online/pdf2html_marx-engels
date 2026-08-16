@@ -37,7 +37,15 @@
 </table>
 {% endif %}
 {% for p in pm.blocks %}
-{% if p.heading_level %}
+{% if p.left is defined %}
+<table width="96%" class="two-column-block">
+<tbody><tr>
+<td valign="TOP" width="48%">{% for cp in p.left %}<p align="{{ cp.align }}">{{ cp | render_inlines }}</p>{% endfor %}</td>
+<td> </td>
+<td valign="TOP" width="48%">{% for cp in p.right %}<p align="{{ cp.align }}">{{ cp | render_inlines }}</p>{% endfor %}</td>
+</tr></tbody>
+</table>
+{% elif p.heading_level %}
 <h{{ p.heading_level }} align="{{ p.align }}">{{ p | render_inlines }}</h{{ p.heading_level }}>
 {% elif p.is_quote %}
 <blockquote>

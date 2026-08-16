@@ -10,6 +10,7 @@ from pdf2html.utils.types import Inline
 from pdf2html.utils.types import PageModel
 from pdf2html.utils.types import Paragraph
 from pdf2html.utils.types import SignatureBlock
+from pdf2html.utils.types import TwoColumnBlock
 
 # Паттерн: текст, 5+ пробелов, затем число (арабское или римское)
 _RUNNING_HEADER_RE = re.compile(
@@ -521,13 +522,123 @@ def _is_paragraph_break(
     return False
 
 
+_COLUMN_GUTTER_MIN = 20.0
+_TWO_COLUMN_MIN_ROWS = 3
+_COLUMN_FIT_TOL = 5.0
+
+
+def _group_rows(lines: list[TextLine]) -> list[list[TextLine]]:
+    """Cluster lines into physical PDF rows by merging list-adjacent lines
+    whose y-ranges overlap — deliberately conservative, no global re-sort.
+
+    text_extractor hands lines to us in pdfminer's own block order, which is
+    already correct reading order for the vast majority of a page. A real
+    two-column body passage does interleave row by row in that order (each
+    row's left/right pair land next to each other in the list). But other
+    same-y-range cases exist for unrelated reasons — e.g. a small signature
+    note where pdfminer clusters one whole column into a block, then the
+    other, so two lines can share a y-range without being row-mates at all.
+    Re-sorting the full line list by y0 to find "rows" would silently
+    reorder those, corrupting paragraph text (verified: it flipped the order
+    of a "Написано .../Печатается по тексту сборника" note). Only ever
+    merging an immediately adjacent pair avoids that: it catches genuine
+    row-interleaved columns while leaving everything else exactly as
+    text_extractor ordered it.
+    """
+    rows: list[list[TextLine]] = []
+    for line in lines:
+        if (
+            rows and len(rows[-1]) == 1
+            and min(rows[-1][0].y1, line.y1) - max(rows[-1][0].y0, line.y0) > 0
+        ):
+            rows[-1].append(line)
+        else:
+            rows.append([line])
+    return rows
+
+
+def _is_split_row(row: list[TextLine]) -> bool:
+    if len(row) != 2:
+        return False
+    a, b = row
+    left, right = (a, b) if a.x0 <= b.x0 else (b, a)
+    if len(left.text.strip()) < 3 or len(right.text.strip()) < 3:
+        return False
+    return right.x0 - left.x1 >= _COLUMN_GUTTER_MIN
+
+
+def _find_two_column_runs(rows: list[list[TextLine]]) -> dict[int, int]:
+    """Maximal contiguous stretches of rows that each split into two
+    horizontally separated lines — a genuine two-column body passage, not an
+    isolated coincidental gap. Maps each run's start row index to its
+    (exclusive) end row index.
+    """
+    runs: dict[int, int] = {}
+    i = 0
+    while i < len(rows):
+        if _is_split_row(rows[i]):
+            j = i + 1
+            while j < len(rows) and _is_split_row(rows[j]):
+                j += 1
+            if j - i >= _TWO_COLUMN_MIN_ROWS:
+                runs[i] = j
+            i = j
+        else:
+            i += 1
+    return runs
+
+
+def _lines_to_paragraphs(
+    lines: list[TextLine],
+    body_median: float | None,
+    body_x0: float,
+    body_x1: float,
+    page_width: float,
+) -> list[Paragraph]:
+    paragraphs: list[Paragraph] = []
+    current_lines: list[TextLine] = []
+    prev_line: TextLine | None = None
+
+    for line in lines:
+        if prev_line is None:
+            current_lines.append(line)
+            prev_line = line
+            continue
+
+        prev_text = prev_line.text.strip()
+
+        # Если предыдущая строка заканчивается дефисом переноса,
+        # следующая строка почти наверняка продолжает тот же абзац.
+        if _ends_with_hyphen_wrap(prev_text):
+            new_paragraph = False
+        else:
+            new_paragraph = _is_paragraph_break(prev_line, line, body_x0, body_x1)
+
+        if new_paragraph:
+            para = _build_paragraph(current_lines, body_median, body_x0, body_x1, page_width)
+            if para is not None:
+                paragraphs.append(para)
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+        prev_line = line
+
+    if current_lines:
+        para = _build_paragraph(current_lines, body_median, body_x0, body_x1, page_width)
+        if para is not None:
+            paragraphs.append(para)
+
+    return paragraphs
+
+
 def detect_paragraphs(
     text_layer: PageTextLayer,
     body_min_y: float | None = None,
     heading_body_threshold: float | None = None,
     body_fontsize_ref: float | None = None,
     running_header_min_y: float | None = None,
-) -> list[Paragraph]:
+) -> list:
     # Compute body line bounds and median font size
     body_lines_all: list[TextLine] = []
     body_sizes: list[float] = []
@@ -551,51 +662,62 @@ def detect_paragraphs(
     body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
     body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
-    paragraphs: list[Paragraph] = []
-    current_lines: list[TextLine] = []
-    prev_line: TextLine | None = None
+    rows = _group_rows(body_lines_all)
+    two_col_runs = _find_two_column_runs(rows)
 
-    for line in text_layer.lines:
-        text = line.text.strip()
-        if not text:
+    blocks: list = []
+    segment: list[TextLine] = []
+    row_idx = 0
+    while row_idx < len(rows):
+        run_end = two_col_runs.get(row_idx)
+        if run_end is not None:
+            if segment:
+                blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, text_layer.width))
+                segment = []
+            left_lines = [min(row, key=lambda l: l.x0) for row in rows[row_idx:run_end]]
+            right_lines = [max(row, key=lambda l: l.x0) for row in rows[row_idx:run_end]]
+            left_x0, left_x1 = min(l.x0 for l in left_lines), max(l.x1 for l in left_lines)
+            right_x0, right_x1 = min(l.x0 for l in right_lines), max(l.x1 for l in right_lines)
+
+            # One column can run a few lines longer than the other (e.g. a
+            # numbered breakdown that's wordier than the passage it quotes).
+            # Once its sibling has run out, that tail no longer forms a split
+            # row — absorb it into whichever column's x-range it still fits,
+            # stopping only once a line spans neither (real return to single
+            # column body text).
+            tail = run_end
+            while tail < len(rows) and len(rows[tail]) == 1:
+                line = rows[tail][0]
+                if line.x0 >= left_x0 - _COLUMN_FIT_TOL and line.x1 <= left_x1 + _COLUMN_FIT_TOL:
+                    left_lines.append(line)
+                elif line.x0 >= right_x0 - _COLUMN_FIT_TOL and line.x1 <= right_x1 + _COLUMN_FIT_TOL:
+                    right_lines.append(line)
+                else:
+                    break
+                tail += 1
+
+            blocks.append(TwoColumnBlock(
+                left=_lines_to_paragraphs(
+                    left_lines, body_median,
+                    min(l.x0 for l in left_lines), max(l.x1 for l in left_lines),
+                    text_layer.width,
+                ),
+                right=_lines_to_paragraphs(
+                    right_lines, body_median,
+                    min(l.x0 for l in right_lines), max(l.x1 for l in right_lines),
+                    text_layer.width,
+                ),
+            ))
+            row_idx = tail
             continue
-        if body_min_y is not None and line.y0 < body_min_y:
-            continue
-        if heading_body_threshold is not None and line.y0 >= heading_body_threshold:
-            continue
-        if running_header_min_y is not None and line.y0 >= running_header_min_y:
-            continue
 
-        if prev_line is None:
-            current_lines.append(line)
-            prev_line = line
-            continue
+        segment.extend(rows[row_idx])
+        row_idx += 1
 
-        prev_text = prev_line.text.strip()
+    if segment:
+        blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, text_layer.width))
 
-        # Если предыдущая строка заканчивается дефисом переноса,
-        # следующая строка почти наверняка продолжает тот же абзац.
-        if _ends_with_hyphen_wrap(prev_text):
-            new_paragraph = False
-        else:
-            new_paragraph = _is_paragraph_break(prev_line, line, body_x0, body_x1)
-
-        if new_paragraph:
-            para = _build_paragraph(current_lines, body_median, body_x0, body_x1, text_layer.width)
-            if para is not None:
-                paragraphs.append(para)
-            current_lines = [line]
-        else:
-            current_lines.append(line)
-
-        prev_line = line
-
-    if current_lines:
-        para = _build_paragraph(current_lines, body_median, body_x0, body_x1, text_layer.width)
-        if para is not None:
-            paragraphs.append(para)
-
-    return paragraphs
+    return blocks
 
 
 _CLOSING_QUOTE_RE = re.compile(r'(?<!\s)[»""]\s*[.,:;!?]?\s*$')
@@ -637,6 +759,8 @@ def detect_quotes(pm: PageModel, prev_quote_open: bool = False) -> PageModel:
     would be wrongly promoted to <blockquote> just because it lacks a local «.
     """
     for i, p in enumerate(pm.blocks):
+        if not isinstance(p, Paragraph):
+            continue
         if _is_heading_like_paragraph(p):
             p.heading_level = 3
             p.is_small = False
@@ -665,6 +789,8 @@ def _para_closes_quote(para: Paragraph) -> bool:
 def quote_is_open_at_page_end(pm: PageModel) -> bool:
     """True if the page ends with a blockquote that has no closing guillemet."""
     for p in reversed(pm.blocks):
+        if not isinstance(p, Paragraph):
+            continue
         if p.is_quote:
             return not _para_closes_quote(p)
     return False
@@ -685,6 +811,10 @@ def apply_quote_continuation(pm: PageModel, prev_quote_open: bool) -> None:
     if pm.headings or pm.heading_blocks:
         return
     for p in pm.blocks:
+        if not isinstance(p, Paragraph):
+            # A two-column block can't be a quote continuation — treat it like
+            # reaching body text and stop.
+            return
         if p.is_quote:
             # Already marked (e.g. is_quote_tail from a previous run) — keep going.
             if _para_closes_quote(p):
