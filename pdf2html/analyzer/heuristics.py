@@ -259,11 +259,11 @@ def detect_headings(
 def detect_signatures(
     text_layer: PageTextLayer,
     heading_body_threshold: float | None = None,
-) -> tuple[SignatureBlock | None, float | None, Paragraph | None]:
+) -> tuple[SignatureBlock | None, float | None, list[Paragraph]]:
     """Detect two-column article signatures at bottom of page.
 
-    Returns (SignatureBlock, sig_top_y, star_footnote).
-    star_footnote: editorial '*'-footnote found below the signature block, if any.
+    Returns (SignatureBlock, sig_top_y, star_footnotes).
+    star_footnotes: editorial '*'-footnote paragraphs found below the signature block, one per marker.
     sig_top_y is the y1 of the topmost signature line, used to limit footnote detection.
     heading_body_threshold: lines at or above this y0 belong to the heading — skip them.
     """
@@ -271,11 +271,11 @@ def detect_signatures(
     if heading_body_threshold is not None:
         lines = [l for l in lines if l.y0 < heading_body_threshold]
     if not lines:
-        return None, None, None
+        return None, None, []
 
     all_sizes = [l.avg_fontsize for l in lines if l.avg_fontsize is not None]
     if not all_sizes:
-        return None, None, None
+        return None, None, []
     all_sizes.sort()
     main_size = all_sizes[int(len(all_sizes) * 0.9)]
     small_threshold = main_size * 0.85
@@ -290,7 +290,7 @@ def detect_signatures(
             break
 
     if not all_small:
-        return None, None, None
+        return None, None, []
 
     # Separate '*' editorial footnote lines at the very bottom.
     # Collect the entire contiguous block of star lines, then verify they are
@@ -306,24 +306,25 @@ def detect_signatures(
             small_lines = star_lines + small_lines
             star_lines = []
 
-    star_para: Paragraph | None = None
+    star_paras: list[Paragraph] = []
     if star_lines:
         star_lines.sort(key=lambda l: -l.y0)
-        inlines = _lines_to_inlines(star_lines, break_on_asterisk=True)
-        if inlines:
-            star_para = Paragraph(inlines=inlines, align="LEFT")
+        for group in _split_footnote_entries(star_lines):
+            inlines = _lines_to_inlines(group)
+            if inlines:
+                star_paras.append(Paragraph(inlines=inlines, align="LEFT"))
 
     if not small_lines:
-        return None, None, star_para
+        return None, None, star_paras
 
     small_lines.sort(key=lambda l: -l.y0)  # reading order
     if small_lines[0].text.strip().startswith("*"):
-        return None, None, star_para  # remaining lines are also footnote
+        return None, None, star_paras  # remaining lines are also footnote
 
     # Reject if any small line is too wide to be a column in a two-column layout
     text_width = max((l.x1 for l in lines), default=0.0) - min((l.x0 for l in lines), default=0.0)
     if text_width > 0 and max(l.x1 - l.x0 for l in small_lines) > text_width * 0.55:
-        return None, None, star_para
+        return None, None, star_paras
 
     page_center = text_layer.width / 2
     left_lines = [l for l in small_lines if (l.x0 + l.x1) / 2 < page_center]
@@ -335,12 +336,12 @@ def detect_signatures(
         return SignatureBlock(
             left=_group_sig_lines(left_lines) if left_lines else [],
             right=_group_sig_lines(right_lines) if right_lines else [],
-        ), sig_top_y, star_para
+        ), sig_top_y, star_paras
 
     return SignatureBlock(
         left=_group_sig_lines(left_lines),
         right=_group_sig_lines(right_lines),
-    ), sig_top_y, star_para
+    ), sig_top_y, star_paras
 
 
 def detect_opening_signature(
@@ -442,8 +443,9 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
     return merged
 
 
-def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -> tuple[Paragraph, float, bool] | None:
-    """Returns (paragraph, body_min_y, True) for a "*"-prefixed editorial footnote.
+def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -> tuple[list[Paragraph], float, bool] | None:
+    """Returns (paragraphs, body_min_y, True) for a "*"-prefixed editorial footnote block.
+    One paragraph per '*'/'**' marker entry in the block.
     sig_top_y: if provided, ignore lines with y0 < sig_top_y (they belong to signatures).
     """
     lines = [line for line in text_layer.lines if line.text.strip()]
@@ -481,11 +483,14 @@ def detect_footnote(text_layer: PageTextLayer, sig_top_y: float | None = None) -
     if not footnote_lines[0].text.strip().startswith("*"):
         return None
 
-    inlines = _lines_to_inlines(footnote_lines, break_on_asterisk=True)
-    para = Paragraph(inlines=inlines, align="LEFT")
+    paras = []
+    for group in _split_footnote_entries(footnote_lines):
+        inlines = _lines_to_inlines(group)
+        if inlines:
+            paras.append(Paragraph(inlines=inlines, align="LEFT"))
 
     top_y = max(l.y1 for l in footnote_lines)
-    return para, top_y, True
+    return paras, top_y, True
 
 
 def _is_paragraph_break(
@@ -788,7 +793,23 @@ def _is_subscript(span: TextSpan, line_y1: float, body_size: float) -> bool:
     return span.fontsize < body_size * 0.85 and span.y1 < line_y1 - 2.0
 
 
-def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) -> list[Inline]:
+def _split_footnote_entries(lines: list[TextLine]) -> list[list[TextLine]]:
+    """Split footnote lines into groups, one per '*'/'**' marker entry.
+
+    A footnote block can stack multiple editorial notes (e.g. '*' and '**'
+    definitions) back to back; each line starting with an asterisk begins a
+    new entry, and following lines (word-wrap continuations) belong to it.
+    """
+    groups: list[list[TextLine]] = []
+    for line in lines:
+        if not groups or line.text.strip().startswith("*"):
+            groups.append([line])
+        else:
+            groups[-1].append(line)
+    return groups
+
+
+def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
     """Build Inline list from TextLines preserving italic/sup/sub per span, handling hyphen-wrap."""
     inlines: list[Inline] = []
 
@@ -813,11 +834,7 @@ def _lines_to_inlines(lines: list[TextLine], break_on_asterisk: bool = False) ->
         if inlines and _ends_with_hyphen_wrap(inlines[-1].text.rstrip()):
             inlines[-1].text = inlines[-1].text.rstrip()[:-1]
         elif inlines:
-            first_text = "".join(lp.text for lp in line_parts).lstrip()
-            if break_on_asterisk and first_text.startswith("*"):
-                line_parts[0].text = "<br>" + line_parts[0].text.lstrip()
-            else:
-                line_parts[0].text = " " + line_parts[0].text
+            line_parts[0].text = " " + line_parts[0].text
 
         inlines.extend(line_parts)
 

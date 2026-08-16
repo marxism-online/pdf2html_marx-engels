@@ -62,15 +62,15 @@ class StructureAnalyzer:
             if self._body_fontsize is None or page_p75 > self._body_fontsize * 0.95:
                 self._body_fontsize = page_p75
 
-        signature_block, sig_top_y, star_footnote = detect_signatures(
+        signature_block, sig_top_y, star_footnotes = detect_signatures(
             text_layer, heading_body_threshold=heading_body_threshold
         )
 
         footnote_result = detect_footnote(text_layer, sig_top_y=sig_top_y)
-        footnote_block, body_min_y, has_bottom_hr = footnote_result if footnote_result else (None, None, False)
+        footnote_blocks, body_min_y, has_bottom_hr = footnote_result if footnote_result else ([], None, False)
 
-        if star_footnote and not footnote_block:
-            footnote_block = star_footnote
+        if star_footnotes and not footnote_blocks:
+            footnote_blocks = star_footnotes
             has_bottom_hr = True
 
         if body_min_y is None and sig_top_y is not None:
@@ -109,7 +109,7 @@ class StructureAnalyzer:
             headings=headings,
             heading_blocks=heading_blocks,
             blocks=blocks,
-            footnote_block=footnote_block,
+            footnote_blocks=footnote_blocks,
             has_bottom_hr=has_bottom_hr,
             signature_block=signature_block,
             opening_signature=opening_signature,

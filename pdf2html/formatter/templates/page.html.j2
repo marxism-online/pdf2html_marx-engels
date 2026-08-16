@@ -61,7 +61,7 @@
 {% if pm.has_bottom_hr %}
 <hr class="footnote-hr">
 {% endif %}
-{% if pm.footnote_block %}
-<p align="JUSTIFY"><small>{{ pm.footnote_block | render_inlines }}</small></p>
-{% endif %}
+{% for fb in pm.footnote_blocks %}
+<p align="JUSTIFY"><small>{{ fb | render_inlines }}</small></p>
+{% endfor %}
 {% endif %}

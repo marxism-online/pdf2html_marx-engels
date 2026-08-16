@@ -21,6 +21,6 @@ def test_blockquote_render():
 
 def test_bottom_hr_small():
   p = Paragraph(inlines=[Inline(text="мелкий текст", small=True)])
-  pm = PageModel(page_num=3, has_bottom_hr=True, footnote_block=p)
+  pm = PageModel(page_num=3, has_bottom_hr=True, footnote_blocks=[p])
   html = HtmlFormatter().render_page(pm)
   assert 'width:30%' in html and '<small>' in html

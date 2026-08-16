@@ -45,7 +45,7 @@ class PageModel:
     headings: List[Heading] = field(default_factory=list)
     heading_blocks: list = field(default_factory=list)  # ordered List[Heading | Paragraph]
     blocks: List[Paragraph] = field(default_factory=list)
-    footnote_block: Optional[Paragraph] = None
+    footnote_blocks: List[Paragraph] = field(default_factory=list)
     has_bottom_hr: bool = False
     signature_block: Optional[SignatureBlock] = None
     opening_signature: Optional[SignatureBlock] = None
@@ -60,7 +60,7 @@ class PageModel:
             and not self.headings
             and not self.heading_blocks
             and not self.running_header
-            and not self.footnote_block
+            and not self.footnote_blocks
             and not self.signature_block
             and not self.opening_signature
         )
