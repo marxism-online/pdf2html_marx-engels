@@ -190,7 +190,7 @@ class App(ctk.CTk):
             body_fontsize_seed = None
             if selected_pages is not None:
                 self._queue.put("STATUS:Определение размера шрифта…")
-                body_fontsize_seed = _prescan_body_fontsize(pdf)
+                body_fontsize_seed = _prescan_body_fontsize(pdf, selected_pages)
 
             reader = PdfTextReader()
             converter = PageConverter(

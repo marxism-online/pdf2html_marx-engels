@@ -6,8 +6,6 @@ import shutil
 import sys
 from pathlib import Path
 
-from pdfminer.pdfpage import PDFPage
-
 from .analyzer.text_extractor import PdfTextExtractor
 from .analyzer.heuristics import detect_running_header
 from .logging_setup import setup_logging
@@ -51,36 +49,27 @@ def _prescan_page_numbers(pdf_path: str, selected_pages: set[int] | None) -> dic
     return result
 
 
-def _prescan_body_fontsize(pdf_path: str, max_samples: int = 100) -> float | None:
-    """Whole-document pre-scan for a stable body-prose fontsize reference.
+def _prescan_body_fontsize(pdf_path: str, selected_pages: set[int] | None) -> float | None:
+    """Pre-scan the requested pages for a stable body-prose fontsize reference.
 
     StructureAnalyzer builds this reference incrementally, page by page, only
-    from pages it actually processes. A --pages range that starts inside a
-    long quoted passage (set in a smaller font than the surrounding narrative)
-    has no prior context, so the reference stays pinned to the quote's size —
-    same-size in-article subheadings then misclassify as main (H2) headings
-    instead of sub (H3) ones. Seeding StructureAnalyzer with a document-wide
-    75th-percentile line fontsize avoids that regardless of which range is
-    requested, matching what a full-book conversion would already produce.
+    from pages it actually processes — so within a narrow --pages range that
+    starts inside a long quoted passage (smaller font than the surrounding
+    narrative), same-size in-article subheadings can misclassify as main (H2)
+    headings instead of sub (H3) ones before enough real body text is seen.
 
-    Body-text style is consistent across a whole volume, so an evenly spaced
-    sample of pages is enough to get a robust estimate — reading every single
-    page (e.g. all 723 of a full volume) to answer a one-page conversion
-    request would make the request wait on a full-book scan for no benefit.
+    Pooling every line's fontsize from the requested pages up front and using
+    its 75th percentile as the seed sidesteps that: body prose reliably
+    outweighs quoted excerpts across a handful of pages, even a single one
+    (verified against p. 109/vol. 1, the ГЛАВА О ВОСПИТАНИИ case). No need to
+    look outside the requested range — cost scales with its size, not with
+    the book's.
     """
-    with open(pdf_path, "rb") as f:
-        total_pages = sum(1 for _ in PDFPage.get_pages(f))
-    if total_pages == 0:
-        return None
-
-    stride = max(1, total_pages // max_samples)
-    sample_pages = set(range(1, total_pages + 1, stride))
-
     reader = PdfTextReader()
     ext = PdfTextExtractor()
     sizes: list[float] = []
 
-    for page_no, layout in reader.iter_pages(pdf_path, selected_pages=sample_pages):
+    for page_no, layout in reader.iter_pages(pdf_path, selected_pages=selected_pages):
         tl = ext.extract_page_text_layer(page_no, layout)
         for line in tl.lines:
             if not line.text.strip():
@@ -121,7 +110,7 @@ def main() -> None:
     body_fontsize_seed = None
     if selected_pages is not None:
         print("Определение размера шрифта...", end=" ", file=sys.stderr, flush=True)
-        body_fontsize_seed = _prescan_body_fontsize(args.pdf)
+        body_fontsize_seed = _prescan_body_fontsize(args.pdf, selected_pages)
         print("готово", file=sys.stderr, flush=True)
 
     first_content_page = min(page_numbers) if page_numbers else None
