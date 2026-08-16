@@ -49,6 +49,35 @@ def _prescan_page_numbers(pdf_path: str, selected_pages: set[int] | None) -> dic
     return result
 
 
+def _prescan_body_fontsize(pdf_path: str) -> float | None:
+    """Whole-document pre-scan for a stable body-prose fontsize reference.
+
+    StructureAnalyzer builds this reference incrementally, page by page, only
+    from pages it actually processes. A --pages range that starts inside a
+    long quoted passage (set in a smaller font than the surrounding narrative)
+    has no prior context, so the reference stays pinned to the quote's size —
+    same-size in-article subheadings then misclassify as main (H2) headings
+    instead of sub (H3) ones. Seeding StructureAnalyzer with a document-wide
+    75th-percentile line fontsize avoids that regardless of which range is
+    requested, matching what a full-book conversion would already produce.
+    """
+    reader = PdfTextReader()
+    ext = PdfTextExtractor()
+    sizes: list[float] = []
+
+    for page_no, layout in reader.iter_pages(pdf_path):
+        tl = ext.extract_page_text_layer(page_no, layout)
+        for line in tl.lines:
+            if not line.text.strip():
+                continue
+            sizes.extend(s.fontsize for s in line.spans if s.fontsize)
+
+    if not sizes:
+        return None
+    sizes.sort()
+    return sizes[int(len(sizes) * 0.75)]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
@@ -71,6 +100,15 @@ def main() -> None:
     page_numbers = _prescan_page_numbers(args.pdf, selected_pages)
     print("готово", file=sys.stderr, flush=True)
 
+    # Only needed for a partial --pages range: a full-document run already
+    # builds up an accurate body_fontsize reference on its own by the time it
+    # would matter, so skip the extra whole-document pass in that case.
+    body_fontsize_seed = None
+    if selected_pages is not None:
+        print("Определение размера шрифта...", end=" ", file=sys.stderr, flush=True)
+        body_fontsize_seed = _prescan_body_fontsize(args.pdf)
+        print("готово", file=sys.stderr, flush=True)
+
     first_content_page = min(page_numbers) if page_numbers else None
 
     reader = PdfTextReader()
@@ -79,6 +117,7 @@ def main() -> None:
         first_content_page=first_content_page,
         volume=volume,
         out_dir=out_dir,
+        body_fontsize_seed=body_fontsize_seed,
     )
 
     total = len(selected_pages) if selected_pages else None

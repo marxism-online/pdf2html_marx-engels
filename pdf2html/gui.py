@@ -176,7 +176,7 @@ class App(ctk.CTk):
     def _worker(self, pdf: str, out: str, selected_pages, volume: int | None) -> None:
         try:
             import shutil
-            from .cli import _prescan_page_numbers, _parse_volume
+            from .cli import _prescan_page_numbers, _prescan_body_fontsize, _parse_volume
 
             vol = volume if volume is not None else _parse_volume(pdf, None)
             out_dir = Path(out).parent
@@ -185,12 +185,20 @@ class App(ctk.CTk):
             page_numbers = _prescan_page_numbers(pdf, selected_pages)
             first_content_page = min(page_numbers) if page_numbers else None
 
+            # Only needed for a partial page range — a full-document run
+            # already builds up an accurate reference on its own.
+            body_fontsize_seed = None
+            if selected_pages is not None:
+                self._queue.put("STATUS:Определение размера шрифта…")
+                body_fontsize_seed = _prescan_body_fontsize(pdf)
+
             reader = PdfTextReader()
             converter = PageConverter(
                 page_numbers=page_numbers,
                 first_content_page=first_content_page,
                 volume=vol,
                 out_dir=out_dir,
+                body_fontsize_seed=body_fontsize_seed,
             )
 
             all_pages = list(reader.iter_pages(pdf, selected_pages=selected_pages))

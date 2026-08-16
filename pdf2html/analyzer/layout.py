@@ -17,10 +17,18 @@ from pdf2html.utils.types import PageModel
 
 
 class StructureAnalyzer:
-    def __init__(self) -> None:
+    def __init__(self, body_fontsize_seed: float | None = None) -> None:
+        """body_fontsize_seed: initial cross-page body-fontsize reference, from a
+        whole-document pre-scan. Without it the reference starts at None and is
+        built up page by page from whatever the requested --pages range happens
+        to contain — if that range starts inside a long quoted passage (smaller
+        font than the surrounding narrative), the reference stays pinned to the
+        quote's size and same-size in-article subheadings get misclassified as
+        main (H2) instead of sub (H3) headings until enough real body text is seen.
+        """
         self.text_extractor = PdfTextExtractor()
         self._prev_quote_open: bool = False
-        self._body_fontsize: float | None = None
+        self._body_fontsize: float | None = body_fontsize_seed
 
     def build_page_model(self, page_no: int, layout: object) -> PageModel:
         text_layer = self.text_extractor.extract_page_text_layer(page_no, layout)

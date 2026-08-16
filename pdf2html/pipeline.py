@@ -40,13 +40,14 @@ class PageConverter:
         first_content_page: int | None,
         volume: int | None,
         out_dir: Path,
+        body_fontsize_seed: float | None = None,
     ) -> None:
         self._page_numbers = page_numbers
         self._first_content_page = first_content_page
         self._volume = volume
         self._out_dir = out_dir
 
-        self._analyzer = StructureAnalyzer()
+        self._analyzer = StructureAnalyzer(body_fontsize_seed=body_fontsize_seed)
         self._fmt = HtmlFormatter(page_numbers=page_numbers)
 
         self.parts: list[str] = []
