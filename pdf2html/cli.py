@@ -6,6 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from pdfminer.pdfpage import PDFPage
+
 from .analyzer.text_extractor import PdfTextExtractor
 from .analyzer.heuristics import detect_running_header
 from .logging_setup import setup_logging
@@ -49,7 +51,7 @@ def _prescan_page_numbers(pdf_path: str, selected_pages: set[int] | None) -> dic
     return result
 
 
-def _prescan_body_fontsize(pdf_path: str) -> float | None:
+def _prescan_body_fontsize(pdf_path: str, max_samples: int = 100) -> float | None:
     """Whole-document pre-scan for a stable body-prose fontsize reference.
 
     StructureAnalyzer builds this reference incrementally, page by page, only
@@ -60,12 +62,25 @@ def _prescan_body_fontsize(pdf_path: str) -> float | None:
     instead of sub (H3) ones. Seeding StructureAnalyzer with a document-wide
     75th-percentile line fontsize avoids that regardless of which range is
     requested, matching what a full-book conversion would already produce.
+
+    Body-text style is consistent across a whole volume, so an evenly spaced
+    sample of pages is enough to get a robust estimate — reading every single
+    page (e.g. all 723 of a full volume) to answer a one-page conversion
+    request would make the request wait on a full-book scan for no benefit.
     """
+    with open(pdf_path, "rb") as f:
+        total_pages = sum(1 for _ in PDFPage.get_pages(f))
+    if total_pages == 0:
+        return None
+
+    stride = max(1, total_pages // max_samples)
+    sample_pages = set(range(1, total_pages + 1, stride))
+
     reader = PdfTextReader()
     ext = PdfTextExtractor()
     sizes: list[float] = []
 
-    for page_no, layout in reader.iter_pages(pdf_path):
+    for page_no, layout in reader.iter_pages(pdf_path, selected_pages=sample_pages):
         tl = ext.extract_page_text_layer(page_no, layout)
         for line in tl.lines:
             if not line.text.strip():
