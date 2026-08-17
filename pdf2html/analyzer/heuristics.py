@@ -406,7 +406,7 @@ def _lines_to_inlines_br(lines: list[TextLine]) -> list[Inline]:
     """Like _lines_to_inlines but inserts <br> between lines."""
     inlines: list[Inline] = []
     for line in lines:
-        body_size = max((s.fontsize for s in line.spans if s.fontsize), default=0.0)
+        body_size = _line_body_fontsize(line)
         parts: list[Inline] = []
         for span in line.spans:
             text = span.text.replace("\n", "").replace("\r", "")
@@ -960,6 +960,26 @@ def _is_italic_font(fontname: str | None) -> bool:
     return "italic" in fn or "oblique" in fn
 
 
+def _line_body_fontsize(line: TextLine) -> float:
+    """Dominant font size of a line's actual text, by character count.
+
+    A plain max() over span sizes is thrown off by a single stray glyph —
+    e.g. an oversized invisible word-space pdfminer sometimes emits mid-line
+    — which then makes ordinary body text look "small" next to it and get
+    misclassified as sup/sub. Weighting by non-whitespace character count
+    picks the size that's actually running text.
+    """
+    counts: dict[float, int] = {}
+    for span in line.spans:
+        text = span.text.strip()
+        if not text or not span.fontsize:
+            continue
+        counts[span.fontsize] = counts.get(span.fontsize, 0) + len(text)
+    if not counts:
+        return 0.0
+    return max(counts, key=counts.get)
+
+
 def _is_superscript(span: TextSpan, line_y0: float, body_size: float) -> bool:
     if not span.fontsize or not body_size:
         return False
@@ -993,7 +1013,7 @@ def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
     inlines: list[Inline] = []
 
     for line in lines:
-        body_size = max((s.fontsize for s in line.spans if s.fontsize), default=0.0)
+        body_size = _line_body_fontsize(line)
         line_parts: list[Inline] = []
         for span in line.spans:
             text = span.text.replace("\n", "").replace("\r", "")

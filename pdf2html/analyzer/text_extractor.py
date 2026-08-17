@@ -28,11 +28,17 @@ def _fixup_char_text(text: str) -> str:
 
 def _merge_split_lines(lines: list[TextLine]) -> list[TextLine]:
     """Merge consecutive LTTextLine objects that pdfminer split apart even
-    though they're really the same physical line — seen with zero-advance-width
-    glyphs (e.g. the PUA footnote-marker glyphs above), which can confuse
-    pdfminer's line clustering. Only merges lines on the same baseline whose
-    x-ranges touch with virtually no gap; genuine same-row content (two-column
-    signature blocks, etc.) sits far enough apart in x to be unaffected.
+    though they're really the same physical line.
+
+    Two cases: zero-advance-width glyphs (e.g. the PUA footnote-marker glyphs
+    above), which can confuse pdfminer's line clustering on an otherwise flat
+    baseline; and a raised run mid-line (e.g. a footnote-reference number
+    superscripted inside running footnote text) — pdfminer clusters it as its
+    own line because its baseline sits above the surrounding text, even
+    though it's horizontally contiguous with it. Only merges lines whose
+    x-ranges touch with virtually no gap and whose y-ranges overlap; genuine
+    same-row content (two-column signature blocks, etc.) sits far enough
+    apart in x to be unaffected.
     """
     if not lines:
         return lines
@@ -40,9 +46,12 @@ def _merge_split_lines(lines: list[TextLine]) -> list[TextLine]:
     merged: list[TextLine] = [lines[0]]
     for line in lines[1:]:
         prev = merged[-1]
-        same_row = abs(line.y0 - prev.y0) < 1.0 and abs(line.y1 - prev.y1) < 1.0
         gap = line.x0 - prev.x1
-        if same_row and -1.0 <= gap <= 1.5:
+        touches = -1.0 <= gap <= 1.5
+        overlap = min(prev.y1, line.y1) - max(prev.y0, line.y0)
+        min_height = min(prev.y1 - prev.y0, line.y1 - line.y0)
+        same_row = touches and min_height > 0 and overlap > min_height * 0.3
+        if same_row:
             merged[-1] = TextLine(
                 spans=prev.spans + line.spans,
                 x0=prev.x0,
