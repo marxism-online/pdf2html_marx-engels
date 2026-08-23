@@ -92,10 +92,11 @@ class StructureAnalyzer:
             if headings else None
         )
 
+        table_notes: list[str] = []
         if opening_signature is not None:
             blocks = []
         elif headings:
-            blocks = detect_paragraphs(
+            blocks, table_notes = detect_paragraphs(
                 text_layer,
                 body_min_y=body_min_y,
                 heading_body_threshold=heading_body_threshold,
@@ -104,7 +105,7 @@ class StructureAnalyzer:
                 page_no=page_no,
             )
         else:
-            blocks = detect_paragraphs(
+            blocks, table_notes = detect_paragraphs(
                 text_layer,
                 body_min_y=body_min_y,
                 body_fontsize_ref=self._body_fontsize,
@@ -123,6 +124,7 @@ class StructureAnalyzer:
             has_bottom_hr=has_bottom_hr,
             signature_block=signature_block,
             opening_signature=opening_signature,
+            table_notes=table_notes,
         )
 
         # apply_quote_continuation must run before detect_quotes (uses raw is_small).

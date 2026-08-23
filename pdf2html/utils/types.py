@@ -78,6 +78,7 @@ class PageModel:
     opening_signature: Optional[SignatureBlock] = None
     is_illustration: bool = False
     image_src: Optional[str] = None
+    table_notes: List[str] = field(default_factory=list)  # ledger_table bail-outs needing manual review
 
     @property
     def is_blank(self) -> bool:

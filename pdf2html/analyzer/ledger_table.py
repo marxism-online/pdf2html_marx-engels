@@ -227,7 +227,9 @@ def _insert_total_dividers(rows: list[LedgerRow]) -> None:
         i += 1
 
 
-def _build_ledger_table(rows: list[list[TextLine]], page_no: int | None) -> LedgerTable | None:
+def _build_ledger_table(
+    rows: list[list[TextLine]], page_no: int | None
+) -> tuple[LedgerTable | None, str | None]:
     ledger_rows: list[LedgerRow] = []
     label_buffer: list[str] = []
 
@@ -245,12 +247,12 @@ def _build_ledger_table(rows: list[list[TextLine]], page_no: int | None) -> Ledg
             # label/value split assumption doesn't hold here. Bail on the
             # whole region rather than guess; the caller falls back to
             # rendering these lines as ordinary paragraphs.
-            print(
+            note = (
                 f"Страница {page_no}: похоже на таблицу с точками-заполнителями, "
-                "но не удалось разобрать строку со значением — проверьте вручную.",
-                file=sys.stderr,
+                f"но не удалось разобрать строку со значением: {text!r} — проверьте вручную."
             )
-            return None
+            print(note, file=sys.stderr)
+            return None, note
 
         raw_label_lines = label_buffer + ([label_part] if label_part else [])
         ledger_rows.append(LedgerRow(
@@ -262,34 +264,39 @@ def _build_ledger_table(rows: list[list[TextLine]], page_no: int | None) -> Ledg
     if label_buffer:
         # Trailing label-only lines with no value ever showed up — same
         # bail-out reasoning as above.
-        print(
+        note = (
             f"Страница {page_no}: похоже на таблицу с точками-заполнителями, "
-            "но остался неприкреплённый текст подписи — проверьте вручную.",
-            file=sys.stderr,
+            f"но остался неприкреплённый текст подписи: {' / '.join(label_buffer)!r} — "
+            "проверьте вручную."
         )
-        return None
+        print(note, file=sys.stderr)
+        return None, note
 
     _insert_total_dividers(ledger_rows)
-    return LedgerTable(rows=ledger_rows)
+    return LedgerTable(rows=ledger_rows), None
 
 
 def extract_ledger_tables(
     lines: list[TextLine], body_x0: float, page_no: int | None = None
-) -> tuple[list[TextLine | LedgerTable], bool]:
+) -> tuple[list[TextLine | LedgerTable], bool, list[str]]:
     """Split a page's body lines into a sequence of plain TextLines and
     detected LedgerTable blocks, in original reading order.
 
-    Returns (items, any_table_found). Lines belonging to a region that
-    failed to parse confidently are returned unchanged (as plain TextLines)
-    so they still go through the ordinary paragraph pipeline — see
-    _build_ledger_table's bail-out cases.
+    Returns (items, any_table_found, notes). Lines belonging to a region
+    that failed to parse confidently are returned unchanged (as plain
+    TextLines) so they still go through the ordinary paragraph pipeline,
+    and a note describing the failure is added to `notes` — see
+    _build_ledger_table's bail-out cases. Callers should surface these
+    notes (e.g. in a log next to the output file) since automatic table
+    detection is a best effort, not a guarantee.
     """
     rows = _group_table_rows(lines)
     regions = _find_ledger_regions(rows, body_x0)
     if not regions:
-        return list(lines), False
+        return list(lines), False, []
 
     items: list[TextLine | LedgerTable] = []
+    notes: list[str] = []
     found_any = False
     row_idx = 0
     while row_idx < len(rows):
@@ -298,13 +305,15 @@ def extract_ledger_tables(
             items.extend(rows[row_idx])
             row_idx += 1
             continue
-        table = _build_ledger_table(rows[row_idx:end], page_no)
+        table, note = _build_ledger_table(rows[row_idx:end], page_no)
         if table is not None:
             items.append(table)
             found_any = True
         else:
             for row in rows[row_idx:end]:
                 items.extend(row)
+            if note is not None:
+                notes.append(note)
         row_idx = end
 
-    return items, found_any
+    return items, found_any, notes

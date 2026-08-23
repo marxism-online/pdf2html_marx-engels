@@ -1,0 +1,14 @@
+<table class="ledger-table">
+<tbody>
+{% for row in p.rows %}
+<tr>
+<td>{% for lp in row.label %}{{ lp | render_inlines }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+{% if row.value is not none %}
+<td align="CENTER">{{ row.value | render_inlines }}</td>
+{% else %}
+<td> <hr align="CENTER"></td>
+{% endif %}
+</tr>
+{% endfor %}
+</tbody>
+</table>

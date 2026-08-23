@@ -26,7 +26,7 @@ class TestLedgerTableExtraction:
             _line("Возражение правления Общества: «Расчёт сам по себе верен", BODY_X0, 123.6, 400.0),
         ]
 
-        items, found = extract_ledger_tables(lines, BODY_X0, page_no=215)
+        items, found, notes = extract_ledger_tables(lines, BODY_X0, page_no=215)
 
         assert found is True
         # The introductory sentence stays out of the table, as its own line.
@@ -59,7 +59,7 @@ class TestLedgerTableExtraction:
             _line("БАХОМ .............................................. 28 — 29", BODY_X0, 440.6, 452.6),
         ]
 
-        items, found = extract_ledger_tables(lines, BODY_X0, page_no=720)
+        items, found, notes = extract_ledger_tables(lines, BODY_X0, page_no=720)
 
         assert found is True
         assert len(items) == 1
@@ -79,7 +79,7 @@ class TestLedgerTableExtraction:
             _line("ЗАМЕТКИ О НОВЕЙШЕЙ ПРУССКОЙ ЦЕНЗУРНОЙ ИНСТРУКЦИИ.......... 3 — 27", BODY_X0, 480.2, 492.2),
         ]
 
-        items, found = extract_ledger_tables(lines, BODY_X0, page_no=720)
+        items, found, notes = extract_ledger_tables(lines, BODY_X0, page_no=720)
 
         assert found is True
         # heading line is untouched, sitting between two table blocks
@@ -95,7 +95,7 @@ class TestLedgerTableExtraction:
             _line("И многоточие в конце предложения... тоже не триггерит.", BODY_X0, 680.0, 400.0),
         ]
 
-        items, found = extract_ledger_tables(lines, BODY_X0, page_no=1)
+        items, found, notes = extract_ledger_tables(lines, BODY_X0, page_no=1)
 
         assert found is False
         assert items == lines
@@ -105,9 +105,11 @@ class TestLedgerTableExtraction:
         # confidently — must fall back to plain lines and warn, not guess.
         lines = [_line("Название раздела ......................", BODY_X0, 500.0, 400.0)]
 
-        items, found = extract_ledger_tables(lines, BODY_X0, page_no=42)
+        items, found, notes = extract_ledger_tables(lines, BODY_X0, page_no=42)
 
         assert found is False
         assert items == lines
+        assert len(notes) == 1
+        assert "42" in notes[0]
         err = capsys.readouterr().err.lower()
         assert "стр" in err and "42" in err

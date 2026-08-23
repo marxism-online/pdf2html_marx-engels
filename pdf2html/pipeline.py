@@ -6,6 +6,7 @@ from .analyzer.image_extractor import extract_illustration_image
 from .analyzer.layout import StructureAnalyzer
 from .analyzer.plate_inserts import is_unnumbered
 from .formatter.html_rules import HtmlFormatter
+from .utils.types import LedgerTable
 from .utils.types import PageModel
 
 
@@ -51,6 +52,7 @@ class PageConverter:
         self._fmt = HtmlFormatter(page_numbers=page_numbers)
 
         self.parts: list[str] = []
+        self.table_log: list[str] = []
         self._first_rendered = True
         self._last_known_pdf: int | None = None
         self._last_known_book: int | None = None
@@ -132,3 +134,21 @@ class PageConverter:
         else:
             self.parts.append(self._fmt.render_page(pm, first=self._first_rendered))
         self._first_rendered = False
+        self._log_tables(pm)
+
+    def _log_tables(self, pm: PageModel) -> None:
+        """Every detected dot-leader table gets logged next to the output
+        file for manual review — the automatic column layout is a best
+        effort and doesn't always match the PDF's real columns, and a
+        failed detection (pm.table_notes) needs a human to write the HTML
+        by hand regardless.
+        """
+        book_page = pm.book_page_num if pm.book_page_num is not None else "?"
+        for block in pm.blocks:
+            if isinstance(block, LedgerTable):
+                fragment = self._fmt.render_ledger_table_fragment(block)
+                self.table_log.append(
+                    f"--- стр. {book_page} (PDF {pm.page_num}) ---\n{fragment}\n"
+                )
+        for note in pm.table_notes:
+            self.table_log.append(f"--- стр. {book_page} (PDF {pm.page_num}), НЕ РАСПОЗНАНО ---\n{note}\n")

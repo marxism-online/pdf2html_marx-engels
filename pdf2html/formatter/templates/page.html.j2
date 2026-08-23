@@ -38,20 +38,7 @@
 {% endif %}
 {% for p in pm.blocks %}
 {% if p.rows is defined %}
-<table width="96%" align="CENTER" class="ledger-table">
-<tbody>
-{% for row in p.rows %}
-<tr>
-<td>{% for lp in row.label %}{{ lp | render_inlines }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
-{% if row.value is not none %}
-<td align="CENTER">{{ row.value | render_inlines }}</td>
-{% else %}
-<td> <hr align="CENTER"></td>
-{% endif %}
-</tr>
-{% endfor %}
-</tbody>
-</table>
+{% include "ledger_table_fragment.html.j2" %}
 {% elif p.left is defined %}
 <table width="96%" class="two-column-block">
 <tbody><tr>

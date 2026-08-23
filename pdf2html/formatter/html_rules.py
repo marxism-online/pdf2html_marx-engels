@@ -39,6 +39,15 @@ class HtmlFormatter:
             nextpage="" if first else "<!--nextpage-->",
         ).strip()
 
+    def render_ledger_table_fragment(self, table) -> str:
+        """Renders a single LedgerTable's <table>...</table> on its own —
+        used to log every detected dot-leader table next to the output file
+        for manual review (the automatic column layout is a best effort,
+        not always a good visual match for the PDF's real columns).
+        """
+        tmpl = env.get_template("ledger_table_fragment.html.j2")
+        return tmpl.render(p=table).strip()
+
     def render_illustration_fragment(self, pm: PageModel) -> str:
         """Renders an illustration's image/caption without its own anchor or page break.
 

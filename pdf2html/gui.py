@@ -219,6 +219,14 @@ class App(ctk.CTk):
             link_tag = f'<link rel="stylesheet" href="{css_dst.name}">'
             out_path.write_text(link_tag + "\n" + "\n".join(converter.parts) + "\n", encoding="utf-8")
 
+            if converter.table_log:
+                log_path = out_path.with_name(out_path.stem + ".tables.log")
+                log_path.write_text("\n".join(converter.table_log), encoding="utf-8")
+                self._queue.put(
+                    f"LOG:Найдены таблицы с точками-заполнителями ({len(converter.table_log)}) — "
+                    f"см. {log_path.name}"
+                )
+
             self._queue.put("STATUS:Готово!")
             self._queue.put("LOG:Сохранено: " + out)
             self._queue.put(None)  # done

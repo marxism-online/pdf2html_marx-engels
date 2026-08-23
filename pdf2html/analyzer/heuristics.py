@@ -641,7 +641,7 @@ def detect_paragraphs(
     body_fontsize_ref: float | None = None,
     running_header_min_y: float | None = None,
     page_no: int | None = None,
-) -> list:
+) -> tuple[list, list[str]]:
     # Compute body line bounds and median font size
     body_lines_all: list[TextLine] = []
     body_sizes: list[float] = []
@@ -665,11 +665,12 @@ def detect_paragraphs(
     body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
     body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
-    items, found_ledger_table = extract_ledger_tables(body_lines_all, body_x0, page_no=page_no)
+    items, found_ledger_table, table_notes = extract_ledger_tables(body_lines_all, body_x0, page_no=page_no)
     if not found_ledger_table:
-        return _paragraphs_and_two_column_blocks(
+        blocks = _paragraphs_and_two_column_blocks(
             body_lines_all, body_median, body_x0, body_x1, text_layer.width
         )
+        return blocks, table_notes
 
     blocks: list = []
     segment: list[TextLine] = []
@@ -687,7 +688,7 @@ def detect_paragraphs(
         blocks.extend(_paragraphs_and_two_column_blocks(
             segment, body_median, body_x0, body_x1, text_layer.width
         ))
-    return blocks
+    return blocks, table_notes
 
 
 def _paragraphs_and_two_column_blocks(
