@@ -101,6 +101,7 @@ class StructureAnalyzer:
                 heading_body_threshold=heading_body_threshold,
                 body_fontsize_ref=self._body_fontsize,
                 running_header_min_y=running_header_min_y,
+                page_no=page_no,
             )
         else:
             blocks = detect_paragraphs(
@@ -108,6 +109,7 @@ class StructureAnalyzer:
                 body_min_y=body_min_y,
                 body_fontsize_ref=self._body_fontsize,
                 running_header_min_y=running_header_min_y,
+                page_no=page_no,
             )
 
         pm = PageModel(

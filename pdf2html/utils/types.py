@@ -46,6 +46,23 @@ class TwoColumnBlock:
     right: List[Paragraph]
 
 @dataclass
+class LedgerRow:
+    """One row of a dot-leader table (label ......... value), e.g. a wage/
+    budget breakdown or a table-of-contents entry. value=None renders as a
+    divider row (a bare <hr>), auto-inserted above "Итого"/"Всего" rows.
+    """
+    label: List[Paragraph]  # one Paragraph per visual line, joined by <br>
+    value: Optional[Paragraph] = None
+
+@dataclass
+class LedgerTable:
+    """A run of dot-leader rows the PDF laid out with a label, a run of dots
+    (or spaces standing in for them), and a trailing value — e.g. a wage
+    breakdown or a table of contents. See analyzer/ledger_table.py.
+    """
+    rows: List[LedgerRow]
+
+@dataclass
 class PageModel:
     page_num: int
     book_page_num: Optional[int] = None

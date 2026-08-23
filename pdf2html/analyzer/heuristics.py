@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from pdf2html.analyzer.ledger_table import LedgerTable
+from pdf2html.analyzer.ledger_table import extract_ledger_tables
 from pdf2html.utils.text_layer import PageTextLayer
 from pdf2html.utils.text_layer import TextLine
 from pdf2html.utils.text_layer import TextSpan
@@ -638,6 +640,7 @@ def detect_paragraphs(
     heading_body_threshold: float | None = None,
     body_fontsize_ref: float | None = None,
     running_header_min_y: float | None = None,
+    page_no: int | None = None,
 ) -> list:
     # Compute body line bounds and median font size
     body_lines_all: list[TextLine] = []
@@ -662,7 +665,39 @@ def detect_paragraphs(
     body_x0 = min((l.x0 for l in body_lines_all), default=0.0)
     body_x1 = max((l.x1 for l in body_lines_all), default=text_layer.width)
 
-    rows = _group_rows(body_lines_all)
+    items, found_ledger_table = extract_ledger_tables(body_lines_all, body_x0, page_no=page_no)
+    if not found_ledger_table:
+        return _paragraphs_and_two_column_blocks(
+            body_lines_all, body_median, body_x0, body_x1, text_layer.width
+        )
+
+    blocks: list = []
+    segment: list[TextLine] = []
+    for item in items:
+        if isinstance(item, LedgerTable):
+            if segment:
+                blocks.extend(_paragraphs_and_two_column_blocks(
+                    segment, body_median, body_x0, body_x1, text_layer.width
+                ))
+                segment = []
+            blocks.append(item)
+        else:
+            segment.append(item)
+    if segment:
+        blocks.extend(_paragraphs_and_two_column_blocks(
+            segment, body_median, body_x0, body_x1, text_layer.width
+        ))
+    return blocks
+
+
+def _paragraphs_and_two_column_blocks(
+    lines: list[TextLine],
+    body_median: float | None,
+    body_x0: float,
+    body_x1: float,
+    page_width: float,
+) -> list:
+    rows = _group_rows(lines)
     two_col_runs = _find_two_column_runs(rows)
 
     blocks: list = []
@@ -672,7 +707,7 @@ def detect_paragraphs(
         run_end = two_col_runs.get(row_idx)
         if run_end is not None:
             if segment:
-                blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, text_layer.width))
+                blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, page_width))
                 segment = []
             left_lines = [min(row, key=lambda l: l.x0) for row in rows[row_idx:run_end]]
             right_lines = [max(row, key=lambda l: l.x0) for row in rows[row_idx:run_end]]
@@ -700,12 +735,12 @@ def detect_paragraphs(
                 left=_lines_to_paragraphs(
                     left_lines, body_median,
                     min(l.x0 for l in left_lines), max(l.x1 for l in left_lines),
-                    text_layer.width,
+                    page_width,
                 ),
                 right=_lines_to_paragraphs(
                     right_lines, body_median,
                     min(l.x0 for l in right_lines), max(l.x1 for l in right_lines),
-                    text_layer.width,
+                    page_width,
                 ),
             ))
             row_idx = tail
@@ -715,7 +750,7 @@ def detect_paragraphs(
         row_idx += 1
 
     if segment:
-        blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, text_layer.width))
+        blocks.extend(_lines_to_paragraphs(segment, body_median, body_x0, body_x1, page_width))
 
     return blocks
 
