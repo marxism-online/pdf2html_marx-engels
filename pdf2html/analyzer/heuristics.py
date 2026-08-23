@@ -953,6 +953,55 @@ def _ends_with_hyphen_wrap(text: str) -> bool:
     return text.endswith("-")
 
 
+# Дефисные сокращения, которые не являются переносом слова: если разрыв
+# строки случайно совпал с дефисом внутри такого сокращения ("г-на" → "г-" /
+# "на"), дефис нужно сохранить, а не вырезать как перенос.
+_HYPHEN_ABBREVIATIONS = {
+    "об-во", "т-во", "изд-во", "уч-ще", "гос-во", "р-н",
+}
+
+
+def _is_hyphen_abbreviation(prefix_word: str, suffix_word: str) -> bool:
+    """True if the '-' joining prefix_word and suffix_word is a real dash
+    inside an abbreviation, not a word-wrap hyphenation point.
+
+    Russian typographic rules never hyphenate a word leaving a single-letter
+    fragment on either side of the break — so a one-letter prefix (as in
+    "г-н", "т-во", "р-н") can only be a genuine dash. Longer prefixes are
+    checked against a curated list of known abbreviations, since they are
+    otherwise indistinguishable from a valid syllable-boundary hyphenation.
+    """
+    if len(prefix_word) <= 1:
+        return True
+    return f"{prefix_word}-{suffix_word}".lower() in _HYPHEN_ABBREVIATIONS
+
+
+def _trailing_word(text: str) -> str:
+    match = re.search(r"[^\W\d_]+$", text)
+    return match.group(0) if match else ""
+
+
+def _accumulated_trailing_text(inlines: list[Inline], limit: int = 8) -> str:
+    """Concatenate the last few Inline texts back to the nearest whitespace.
+
+    pdfminer sometimes puts a wrap-hyphen in its own span, separate from the
+    letter before it (e.g. "Ге" and "-" as two spans of one PDF line), so
+    inlines[-1].text alone can be just "-" with no letters to judge. Looking
+    back across recent same-run inlines recovers the actual word fragment.
+    """
+    parts: list[str] = []
+    for inline in reversed(inlines[-limit:]):
+        parts.append(inline.text)
+        if re.search(r"\s", inline.text):
+            break
+    return "".join(reversed(parts))
+
+
+def _leading_word(text: str) -> str:
+    match = re.match(r"[^\W\d_]+", text.lstrip())
+    return match.group(0) if match else ""
+
+
 def _is_italic_font(fontname: str | None) -> bool:
     if not fontname:
         return False
@@ -1030,8 +1079,15 @@ def _lines_to_inlines(lines: list[TextLine]) -> list[Inline]:
         if not line_parts:
             continue
 
-        if inlines and _ends_with_hyphen_wrap(inlines[-1].text.rstrip()):
-            inlines[-1].text = inlines[-1].text.rstrip()[:-1]
+        prev_text = inlines[-1].text.rstrip() if inlines else ""
+        if inlines and _ends_with_hyphen_wrap(prev_text):
+            lookback_text = _accumulated_trailing_text(inlines).rstrip()
+            prefix_word = _trailing_word(lookback_text[:-1])
+            suffix_word = _leading_word(line_parts[0].text)
+            if _is_hyphen_abbreviation(prefix_word, suffix_word):
+                inlines[-1].text = prev_text
+            else:
+                inlines[-1].text = prev_text[:-1]
         elif inlines:
             line_parts[0].text = " " + line_parts[0].text
 
